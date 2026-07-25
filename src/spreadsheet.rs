@@ -103,6 +103,18 @@ pub struct Spreadsheet {
     /// where each row and column ended up. Recording the geometry as it is drawn
     /// is what lets a click be resolved back to a cell.
     pub grid_geometry: GridGeometry,
+    /// The workbook this grid was read from, if it came from one.
+    ///
+    /// A grid is a rectangle of text: it cannot describe a column width set in
+    /// Excel, a conditional format, a chart, or the formula behind a cell the
+    /// user never opened. Saving by rebuilding a file from the grid would
+    /// silently drop all of it. Keeping the source means a save can change the
+    /// cells the user changed and leave the rest of the document alone.
+    ///
+    /// Held from the moment the file is opened rather than re-read at save
+    /// time, so what is written is the file the user has been looking at — not
+    /// whatever the path happens to point at minutes later.
+    pub source: Option<umya_spreadsheet::Workbook>,
 }
 
 impl Spreadsheet {
@@ -161,6 +173,7 @@ impl Spreadsheet {
             sheets: vec![Sheet::default()],
             active_sheet: 0,
             grid_geometry: GridGeometry::default(),
+            source: None,
         }
     }
 
@@ -182,7 +195,7 @@ impl Spreadsheet {
     /// Copies rather than moves, so the collection is always complete: every
     /// entry holds a usable sheet, and only the active one can lag behind the
     /// edits made since it was checked out. Parking closes that gap.
-    fn park_active_sheet(&mut self) {
+    pub(crate) fn park_active_sheet(&mut self) {
         let (cells, formulas, cell_styles, col_widths, row_heights) = (
             self.cells.clone(),
             self.formulas.clone(),
@@ -1460,9 +1473,11 @@ impl Spreadsheet {
             .from_path(filepath)?;
 
         self.cells.clear();
-        // A delimited file carries no formulas; anything left here would belong
-        // to the workbook that was open before this one.
+        // A delimited file carries no formulas and no workbook to write back
+        // into; anything left here would belong to the file that was open
+        // before this one.
         self.formulas.clear();
+        self.source = None;
         let mut row_idx = 0;
 
         for result in reader.records() {
@@ -1542,6 +1557,7 @@ impl Spreadsheet {
         }
 
         self.replace_sheets(sheets);
+        self.source = Some(book);
 
         Ok(())
     }
@@ -1559,6 +1575,10 @@ impl Spreadsheet {
         // Open workbook - calamine can auto-detect the format
         let mut workbook = open_workbook_auto(path)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+
+        // This reader sees calculated values, not the document behind them, so
+        // there is nothing here that could be written back as a workbook.
+        self.source = None;
 
         // Get the first sheet name
         let sheet_names = workbook.sheet_names().to_owned();
@@ -1631,6 +1651,7 @@ impl Spreadsheet {
         
         self.cells.clear();
         self.formulas.clear();
+        self.source = None;
         let mut row_idx = 0;
 
         // Process the buffered data line by line

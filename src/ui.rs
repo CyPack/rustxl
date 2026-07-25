@@ -788,8 +788,10 @@ fn render_save_status<'a>(spreadsheet: &Spreadsheet, mode: &'a str, mode_style: 
     let ext = match spreadsheet.save_format {
         SaveFormat::Csv => ".csv",
         SaveFormat::Tsv => ".tsv",
+        SaveFormat::Xlsx => ".xlsx",
     };
-    Line::from(vec![
+
+    let mut spans = vec![
         Span::styled(mode, mode_style),
         Span::styled("  File: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
@@ -798,30 +800,35 @@ fn render_save_status<'a>(spreadsheet: &Spreadsheet, mode: &'a str, mode_style: 
         ),
         Span::styled(ext, Style::default().fg(Color::Cyan)),
         Span::styled("  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("1", Style::default().fg(Color::Yellow)),
-        Span::styled(
-            if spreadsheet.save_format == SaveFormat::Csv {
-                "-CSV* "
-            } else {
-                "-CSV "
-            },
+    ];
+
+    // Each format with the key that selects it; the chosen one is starred.
+    for (key, format, label) in [
+        ("1", SaveFormat::Csv, "CSV"),
+        ("2", SaveFormat::Tsv, "TSV"),
+        ("3", SaveFormat::Xlsx, "XLSX"),
+    ] {
+        let chosen = if spreadsheet.save_format == format {
+            "* "
+        } else {
+            " "
+        };
+        spans.push(Span::styled(key, Style::default().fg(Color::Yellow)));
+        spans.push(Span::styled(
+            format!("-{label}{chosen}"),
             Style::default().fg(Color::DarkGray),
-        ),
-        Span::styled("2", Style::default().fg(Color::Yellow)),
-        Span::styled(
-            if spreadsheet.save_format == SaveFormat::Tsv {
-                "-TSV* "
-            } else {
-                "-TSV "
-            },
-            Style::default().fg(Color::DarkGray),
-        ),
+        ));
+    }
+
+    spans.extend([
         Span::styled("Enter", Style::default().fg(Color::White)),
         Span::styled("-Save ", Style::default().fg(Color::DarkGray)),
         Span::styled("Esc", Style::default().fg(Color::White)),
         Span::styled("-Cancel ", Style::default().fg(Color::DarkGray)),
         Span::styled(msg.to_string(), Style::default().fg(Color::Green)),
-    ])
+    ]);
+
+    Line::from(spans)
 }
 
 fn render_visual_status<'a>(

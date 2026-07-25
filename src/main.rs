@@ -10,6 +10,7 @@ mod style;
 mod types;
 mod ui;
 mod update;
+mod xlsx;
 
 use std::io::{self, Read};
 

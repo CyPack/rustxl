@@ -351,6 +351,7 @@ fn handle_save_mode(spreadsheet: &mut Spreadsheet, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('1') => spreadsheet.save_format = SaveFormat::Csv,
         KeyCode::Char('2') => spreadsheet.save_format = SaveFormat::Tsv,
+        KeyCode::Char('3') => spreadsheet.save_format = SaveFormat::Xlsx,
         KeyCode::Char(c) if c.is_alphanumeric() || c == '_' || c == '-' => {
             spreadsheet.save_filename.push(c);
             spreadsheet.save_message = None;

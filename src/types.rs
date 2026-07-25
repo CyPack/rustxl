@@ -54,6 +54,9 @@ pub enum VisualSubMode {
 pub enum SaveFormat {
     Csv,
     Tsv,
+    /// A workbook. Unlike the text formats this keeps every sheet, and — when
+    /// the file was opened from one — everything the grid cannot describe.
+    Xlsx,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
