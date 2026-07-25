@@ -21,6 +21,11 @@ pub struct ClipboardData {
 
 pub struct Spreadsheet {
     pub cells: HashMap<(usize, usize), String>,
+    /// The formulas behind the active sheet's cells — see [`Sheet::formulas`].
+    ///
+    /// Part of the working copy, so it is parked and checked out with the rest
+    /// of the sheet.
+    pub formulas: HashMap<(usize, usize), String>,
     pub cursor_row: usize,
     pub cursor_col: usize,
     pub scroll_row: usize,
@@ -104,6 +109,7 @@ impl Spreadsheet {
     pub fn new() -> Self {
         Self {
             cells: HashMap::new(),
+            formulas: HashMap::new(),
             cursor_row: 0,
             cursor_col: 0,
             scroll_row: 0,
@@ -177,8 +183,9 @@ impl Spreadsheet {
     /// entry holds a usable sheet, and only the active one can lag behind the
     /// edits made since it was checked out. Parking closes that gap.
     fn park_active_sheet(&mut self) {
-        let (cells, cell_styles, col_widths, row_heights) = (
+        let (cells, formulas, cell_styles, col_widths, row_heights) = (
             self.cells.clone(),
+            self.formulas.clone(),
             self.cell_styles.clone(),
             self.col_widths.clone(),
             self.row_heights.clone(),
@@ -191,6 +198,7 @@ impl Spreadsheet {
             return;
         };
         sheet.cells = cells;
+        sheet.formulas = formulas;
         sheet.cell_styles = cell_styles;
         sheet.col_widths = col_widths;
         sheet.row_heights = row_heights;
@@ -210,6 +218,7 @@ impl Spreadsheet {
             return;
         };
         self.cells = sheet.cells.clone();
+        self.formulas = sheet.formulas.clone();
         self.cell_styles = sheet.cell_styles.clone();
         self.col_widths = sheet.col_widths.clone();
         self.row_heights = sheet.row_heights.clone();
@@ -715,11 +724,25 @@ impl Spreadsheet {
     }
 
     pub fn set_cell(&mut self, row: usize, col: usize, value: String) {
+        // Writing to a cell replaces whatever was behind it. A formula the
+        // workbook carried is no longer what this cell holds, and keeping the
+        // text would resurrect it the next time the file is written.
+        self.formulas.remove(&(row, col));
+
         if value.is_empty() {
             self.cells.remove(&(row, col));
         } else {
             self.cells.insert((row, col), value);
         }
+    }
+
+    /// The formula a cell arrived with, if it had one.
+    ///
+    /// Present only for cells loaded from a workbook: the grid shows the cached
+    /// result, and this is the text behind it. Returns `None` once the cell has
+    /// been written to.
+    pub fn formula_at(&self, row: usize, col: usize) -> Option<&str> {
+        self.formulas.get(&(row, col)).map(String::as_str)
     }
 
     pub fn move_cursor(&mut self, dr: isize, dc: isize, extend_selection: bool) {
@@ -902,7 +925,14 @@ impl Spreadsheet {
 
     pub fn start_editing(&mut self) {
         self.editing = true;
-        self.edit_buffer = self.get_cell(self.cursor_row, self.cursor_col).to_string();
+        // A cell that came from a workbook shows what the formula produced.
+        // Editing shows the formula itself: typing over `30` when the cell
+        // really holds `=SUM(B2:B3)` destroys the formula, and the user should
+        // be able to see what they are replacing.
+        self.edit_buffer = match self.formula_at(self.cursor_row, self.cursor_col) {
+            Some(formula) => formula.to_string(),
+            None => self.get_cell(self.cursor_row, self.cursor_col).to_string(),
+        };
         self.formula_mode = self.edit_buffer.starts_with('=');
         self.selecting_ref = false;
         self.ref_anchor = None;
@@ -1406,7 +1436,8 @@ impl Spreadsheet {
         match extension.as_str() {
             "csv" => self.load_csv(filepath),
             "tsv" => self.load_tsv(filepath),
-            "xlsx" | "xls" => self.load_excel(filepath),
+            "xlsx" => self.load_xlsx(filepath),
+            "xls" => self.load_legacy_excel(filepath),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("Unsupported file format: {}", extension),
@@ -1429,6 +1460,9 @@ impl Spreadsheet {
             .from_path(filepath)?;
 
         self.cells.clear();
+        // A delimited file carries no formulas; anything left here would belong
+        // to the workbook that was open before this one.
+        self.formulas.clear();
         let mut row_idx = 0;
 
         for result in reader.records() {
@@ -1450,7 +1484,74 @@ impl Spreadsheet {
         Ok(())
     }
 
-    fn load_excel(&mut self, filepath: &str) -> std::io::Result<()> {
+    /// Reads a `.xlsx` workbook, keeping the formula behind each cell.
+    ///
+    /// Two readers exist on purpose. This one keeps enough of the document to
+    /// write it back — formulas, and (later) the source workbook itself. The
+    /// legacy reader below handles `.xls`, which this library does not open;
+    /// dropping it would stop files that open today from opening at all.
+    fn load_xlsx(&mut self, filepath: &str) -> std::io::Result<()> {
+        let book = umya_spreadsheet::reader::xlsx::read(std::path::Path::new(filepath))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+
+        let mut sheets = Vec::with_capacity(book.sheet_count());
+        for worksheet in book.sheet_collection() {
+            let mut sheet = Sheet::new(worksheet.name());
+
+            for cell in worksheet.cells_sorted() {
+                let coordinate = cell.coordinate();
+                let (row, col) = (coordinate.row_num(), coordinate.col_num());
+                // Workbook coordinates start at 1. A zero would mean a
+                // malformed file rather than cell A1, so skip it instead of
+                // wrapping the subtraction.
+                if row == 0 || col == 0 {
+                    continue;
+                }
+                let (row, col) = (row as usize - 1, col as usize - 1);
+
+                // The grid shows the cached result; the formula is kept beside
+                // it so editing can reveal it and saving can leave it alone.
+                if cell.is_formula() {
+                    sheet
+                        .formulas
+                        .insert((row, col), format!("={}", cell.formula()));
+                }
+
+                let value = cell.value();
+                if !value.is_empty() {
+                    sheet.cells.insert((row, col), value.into_owned());
+                }
+            }
+
+            // Size each sheet to its own contents.
+            let (max_row, max_col) = sheet
+                .cells
+                .keys()
+                .fold((0, 0), |(r, c), &(row, col)| (r.max(row), c.max(col)));
+            sheet.num_rows = (max_row + 1).max(DEFAULT_ROWS);
+            sheet.num_cols = (max_col + 1).max(DEFAULT_COLS);
+
+            sheets.push(sheet);
+        }
+
+        if sheets.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "No worksheets found in Excel file",
+            ));
+        }
+
+        self.replace_sheets(sheets);
+
+        Ok(())
+    }
+
+    /// Reads the formats umya does not open, `.xls` above all.
+    ///
+    /// Read-only by nature: this path sees calculated values, never the
+    /// formulas behind them, so a file opened this way cannot be written back
+    /// as a workbook without losing them.
+    fn load_legacy_excel(&mut self, filepath: &str) -> std::io::Result<()> {
         use calamine::{open_workbook_auto, Reader, Data};
 
         let path = std::path::Path::new(filepath);
@@ -1529,8 +1630,9 @@ impl Spreadsheet {
         let buffer_str = String::from_utf8_lossy(buffer);
         
         self.cells.clear();
+        self.formulas.clear();
         let mut row_idx = 0;
-        
+
         // Process the buffered data line by line
         for line in buffer_str.lines() {
             let trimmed = line.trim();
@@ -1899,6 +2001,266 @@ mod workbook_loading_characterization {
 
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
         assert!(err.to_string().contains("Unsupported file format"));
+    }
+}
+
+/// What the `.xlsx` reader keeps beyond the values on screen.
+///
+/// The grid shows what a spreadsheet application calculated; these tests cover
+/// the part that used to be thrown away — the formula behind each cell — and
+/// pin down the values that a reader swap must not change.
+#[cfg(test)]
+mod xlsx_reader {
+    use super::*;
+
+    fn fixture(name: &str) -> String {
+        format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name)
+    }
+
+    fn workbook() -> Spreadsheet {
+        let mut sheet = Spreadsheet::new();
+        sheet
+            .load_from_file(&fixture("three_sheets.xlsx"))
+            .expect("fixture loads");
+        sheet
+    }
+
+    /// The formula is kept beside the value it produced, ready to be shown or
+    /// written back.
+    ///
+    /// `Alpha!C2` displays `30`; without this the `=SUM(B2:B3)` behind it is
+    /// gone the moment the file is read, and saving turns a live formula into a
+    /// constant.
+    #[test]
+    fn a_formula_cell_keeps_its_formula_next_to_the_cached_value() {
+        let sheet = workbook();
+
+        assert_eq!(sheet.get_cell(1, 2), "30", "the grid shows the result");
+        assert_eq!(sheet.formula_at(1, 2), Some("=SUM(B2:B3)"));
+    }
+
+    /// The result stays in the grid rather than the formula.
+    ///
+    /// Loading formula text into the grid would hand it to an engine that
+    /// implements a subset of the functions a workbook can contain: a file this
+    /// application cannot evaluate would show an error where a correct number
+    /// used to be.
+    #[test]
+    fn the_grid_holds_the_result_not_the_formula_text() {
+        let sheet = workbook();
+
+        assert!(
+            !sheet.get_cell(1, 2).starts_with('='),
+            "the cell shows a value, not a formula: {:?}",
+            sheet.get_cell(1, 2)
+        );
+    }
+
+    /// A cell that never had a formula does not gain one.
+    #[test]
+    fn plain_cells_have_no_formula() {
+        let sheet = workbook();
+
+        assert_eq!(sheet.formula_at(0, 0), None, "a text cell");
+        assert_eq!(sheet.formula_at(1, 1), None, "a number cell");
+    }
+
+    /// A formula pointing at another sheet survives with its reference intact.
+    #[test]
+    fn a_cross_sheet_formula_keeps_the_sheet_it_points_at() {
+        let mut sheet = workbook();
+        assert!(sheet.activate_sheet(2), "Gamma exists");
+
+        assert_eq!(sheet.get_cell(0, 1), "10");
+        assert_eq!(sheet.formula_at(0, 1), Some("=Alpha!B2"));
+    }
+
+    /// Formulas belong to the sheet they were read from.
+    #[test]
+    fn formulas_follow_the_sheet_the_user_switches_to() {
+        let mut sheet = workbook();
+
+        assert_eq!(sheet.formula_at(1, 2), Some("=SUM(B2:B3)"), "Alpha");
+        assert!(sheet.activate_sheet(1), "Beta exists");
+        assert_eq!(
+            sheet.formula_at(1, 2),
+            None,
+            "Alpha's formula must not follow the user to Beta"
+        );
+    }
+
+    /// Booleans arrive in the same spelling the formula engine produces.
+    ///
+    /// This is a deliberate change from the previous reader, which wrote
+    /// `"true"`. The engine in `formula.rs` returns `"TRUE"`, so a workbook's
+    /// own booleans and the ones this application calculates used to disagree
+    /// inside the same file.
+    #[test]
+    fn booleans_are_spelled_the_way_the_formula_engine_spells_them() {
+        let mut sheet = workbook();
+        assert!(sheet.activate_sheet(1), "Beta exists");
+
+        assert_eq!(sheet.get_cell(1, 0), "TRUE");
+    }
+
+    /// Dates arrive as the serial number the file stores, which is wrong.
+    ///
+    /// `Beta!B2` is 2026-03-14 and the user sees `46095`. Both the old reader
+    /// and this one behave this way, so the reader swap is not what introduced
+    /// it — the number format that would make the value readable is simply not
+    /// consulted. Recorded rather than endorsed: when someone fixes it, this
+    /// test should fail and be updated on purpose.
+    #[test]
+    fn dates_are_still_shown_as_their_serial_number() {
+        let mut sheet = workbook();
+        assert!(sheet.activate_sheet(1), "Beta exists");
+
+        assert_eq!(sheet.get_cell(1, 1), "46095");
+    }
+
+    /// Blank cells stay out of the grid.
+    ///
+    /// A workbook can carry styled-but-empty cells. Storing them would stretch
+    /// the used range and add trailing empty columns to a later CSV save.
+    #[test]
+    fn cells_without_a_value_are_not_stored() {
+        let sheet = workbook();
+
+        assert_eq!(sheet.get_cell(0, 2), "", "Alpha C1 is empty");
+        assert!(!sheet.cells.contains_key(&(0, 2)));
+        assert_eq!(sheet.get_data_bounds(), (2, 2), "Alpha ends at C3");
+    }
+
+    /// Writing to a cell drops the formula that used to be behind it.
+    ///
+    /// Otherwise saving would put the old formula back over the value the user
+    /// just typed.
+    #[test]
+    fn typing_over_a_formula_cell_discards_the_formula() {
+        let mut sheet = workbook();
+        assert_eq!(sheet.formula_at(1, 2), Some("=SUM(B2:B3)"));
+
+        sheet.set_cell(1, 2, "31".to_string());
+
+        assert_eq!(sheet.formula_at(1, 2), None);
+        assert_eq!(sheet.get_cell(1, 2), "31");
+    }
+
+    /// Opening a delimited file clears the formulas of the workbook before it.
+    #[test]
+    fn loading_a_csv_leaves_no_formulas_behind() {
+        let mut sheet = workbook();
+        assert!(sheet.formula_at(1, 2).is_some(), "workbook is open");
+
+        let csv = std::env::temp_dir().join(format!("xl-formula-reset-{}.csv", std::process::id()));
+        std::fs::write(&csv, "a,b\n1,2\n").expect("temp csv is writable");
+        sheet
+            .load_from_file(&csv.to_string_lossy())
+            .expect("csv loads");
+        let _ = std::fs::remove_file(&csv);
+
+        assert_eq!(sheet.formula_at(1, 2), None);
+        assert!(sheet.formulas.is_empty());
+    }
+
+    /// `.xls` is still handled by a reader rather than turned away.
+    ///
+    /// The workbook library used for `.xlsx` does not open the legacy format.
+    /// Rejecting `.xls` would stop files that open today from opening at all,
+    /// so the older reader is still wired up — the error here is about the file
+    /// being missing, not about the format being unknown.
+    #[test]
+    fn the_legacy_format_is_still_accepted() {
+        let mut sheet = Spreadsheet::new();
+        let err = sheet
+            .load_from_file("/nonexistent/legacy.xls")
+            .expect_err("the file does not exist");
+
+        assert!(
+            !err.to_string().contains("Unsupported file format"),
+            "`.xls` must reach a reader: {err}"
+        );
+    }
+
+    /// Editing a formula cell puts the formula in the edit buffer, not the
+    /// number the user can see.
+    ///
+    /// Without this the formula dies silently: the buffer would open on `30`,
+    /// and anything typed replaces `=SUM(B2:B3)` with a constant while the user
+    /// believes they are correcting a number.
+    #[test]
+    fn editing_a_formula_cell_opens_on_the_formula() {
+        let mut sheet = workbook();
+        sheet.cursor_row = 1;
+        sheet.cursor_col = 2;
+        assert_eq!(sheet.get_cell(1, 2), "30", "the cell displays the result");
+
+        sheet.start_editing();
+
+        assert_eq!(sheet.edit_buffer, "=SUM(B2:B3)");
+        assert!(
+            sheet.formula_mode,
+            "a buffer holding a formula is edited in formula mode"
+        );
+    }
+
+    /// A cell without a formula is edited as its own text.
+    #[test]
+    fn editing_a_plain_cell_opens_on_its_value() {
+        let mut sheet = workbook();
+        sheet.cursor_row = 1;
+        sheet.cursor_col = 0;
+
+        sheet.start_editing();
+
+        assert_eq!(sheet.edit_buffer, "widget");
+        assert!(!sheet.formula_mode);
+    }
+
+    /// An empty cell is edited as an empty buffer.
+    #[test]
+    fn editing_an_empty_cell_opens_on_nothing() {
+        let mut sheet = workbook();
+        sheet.cursor_row = 40;
+        sheet.cursor_col = 4;
+
+        sheet.start_editing();
+
+        assert_eq!(sheet.edit_buffer, "");
+    }
+
+    /// Confirming an edit hands the cell over to the grid entirely.
+    ///
+    /// The workbook's formula is no longer what the cell holds, so it must not
+    /// be written back when the file is saved.
+    #[test]
+    fn confirming_an_edit_replaces_the_workbook_formula() {
+        let mut sheet = workbook();
+        sheet.cursor_row = 1;
+        sheet.cursor_col = 2;
+
+        sheet.start_editing();
+        sheet.edit_buffer = "99".to_string();
+        sheet.finish_editing();
+
+        assert_eq!(sheet.get_cell(1, 2), "99");
+        assert_eq!(sheet.formula_at(1, 2), None);
+    }
+
+    /// A file that is not a workbook fails with an error instead of panicking.
+    #[test]
+    fn a_file_that_is_not_a_workbook_is_reported_not_panicked_on() {
+        let path =
+            std::env::temp_dir().join(format!("xl-not-a-workbook-{}.xlsx", std::process::id()));
+        std::fs::write(&path, b"this is not a zip archive").expect("temp file is writable");
+
+        let mut sheet = Spreadsheet::new();
+        let err = sheet
+            .load_from_file(&path.to_string_lossy())
+            .expect_err("the file is not a workbook");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 }
 

@@ -14,6 +14,16 @@ use crate::types::CellStyle;
 pub struct Sheet {
     pub name: String,
     pub cells: HashMap<(usize, usize), String>,
+    /// The formula behind a cell, for the cells that came from a workbook with
+    /// one. Keyed like `cells`, and stored with the leading `=`.
+    ///
+    /// The grid holds the cached *result* rather than the formula, because this
+    /// application's engine does not implement every function a workbook may
+    /// use — loading `=XLOOKUP(...)` into a grid that cannot evaluate it would
+    /// replace a correct number with an error. Keeping the text here means a
+    /// formula can still be shown when the cell is edited, and written back
+    /// untouched when the file is saved.
+    pub formulas: HashMap<(usize, usize), String>,
     pub cell_styles: HashMap<(usize, usize), CellStyle>,
     pub col_widths: HashMap<usize, u16>,
     pub row_heights: HashMap<usize, u16>,
@@ -31,6 +41,7 @@ impl Sheet {
         Self {
             name: name.into(),
             cells: HashMap::new(),
+            formulas: HashMap::new(),
             cell_styles: HashMap::new(),
             col_widths: HashMap::new(),
             row_heights: HashMap::new(),
