@@ -1121,17 +1121,53 @@ mod mouse_input {
         assert_eq!(sheet.active_sheet_name(), "Beta");
     }
 
+    /// The wheel moves the view, and the cursor rides along.
+    ///
+    /// Leaving the cursor behind would look tidier, but the renderer keeps the
+    /// cursor on screen and would drag the view straight back — see
+    /// `the_wheel_still_has_an_effect_once_the_frame_is_drawn`.
     #[test]
-    fn the_wheel_scrolls_the_view_and_leaves_the_cursor_alone() {
+    fn the_wheel_scrolls_the_view_and_takes_the_cursor_with_it() {
         let mut sheet = sheet();
-        let cursor = (sheet.cursor_row, sheet.cursor_col);
+        let (row, col) = (sheet.cursor_row, sheet.cursor_col);
 
         assert!(handle_mouse(&mut sheet, at(MouseEventKind::ScrollDown, 10, 5)));
         assert_eq!(sheet.scroll_row, 3);
-        assert_eq!((sheet.cursor_row, sheet.cursor_col), cursor);
+        assert_eq!(sheet.cursor_row, row + 3, "the cursor followed the view");
+        assert_eq!(sheet.cursor_col, col, "and nothing moved sideways");
 
         assert!(handle_mouse(&mut sheet, at(MouseEventKind::ScrollUp, 10, 5)));
         assert_eq!(sheet.scroll_row, 0);
+        assert_eq!(sheet.cursor_row, row, "scrolling back returns the cursor");
+    }
+
+    /// Scrolling has to survive the frame that comes after it.
+    ///
+    /// The renderer calls `adjust_scroll` on every frame to keep the cursor on
+    /// screen. A wheel event that moved the view away from the cursor was
+    /// therefore undone before the user ever saw it: the test above passed
+    /// while the wheel did nothing at all.
+    #[test]
+    fn the_wheel_still_has_an_effect_once_the_frame_is_drawn() {
+        let mut sheet = sheet();
+        let area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        let wheel = at(MouseEventKind::ScrollDown, 10, 5);
+        assert!(handle_mouse(&mut sheet, wheel));
+        let scrolled_to = sheet.scroll_row;
+        assert!(scrolled_to > 0, "the wheel moved the view");
+
+        sheet.adjust_scroll(area);
+
+        assert_eq!(
+            sheet.scroll_row, scrolled_to,
+            "drawing the next frame undid the scroll"
+        );
     }
 
     #[test]
