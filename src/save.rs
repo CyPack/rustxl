@@ -543,6 +543,101 @@ mod workbook_saving {
         assert!(sheet.save_format == SaveFormat::Csv);
     }
 
+    /// Saving offers the file that was opened, not a new one.
+    ///
+    /// A file manager handing a document over is the case that matters: the
+    /// user edits it, presses save, accepts the default, and expects their own
+    /// file to be updated -- not a `spreadsheet.xlsx` in whatever directory the
+    /// program was started from.
+    #[test]
+    fn saving_offers_the_file_that_was_opened() {
+        let mut sheet = Spreadsheet::new();
+        let path = fixture("three_sheets.xlsx");
+        sheet.load_from_file(&path).expect("fixture loads");
+
+        sheet.enter_save_mode();
+
+        assert_eq!(
+            format!("{}.xlsx", sheet.save_filename),
+            path,
+            "the save dialog should name the file that is open"
+        );
+    }
+
+    /// The same applies to text files.
+    #[test]
+    fn saving_offers_the_text_file_that_was_opened() {
+        let csv = std::env::temp_dir().join(format!("xl-reopen-{}.csv", std::process::id()));
+        std::fs::write(&csv, "a,b\n").expect("temp csv is writable");
+
+        let mut sheet = Spreadsheet::new();
+        sheet
+            .load_from_file(&csv.to_string_lossy())
+            .expect("csv loads");
+        let _ = std::fs::remove_file(&csv);
+
+        assert_eq!(
+            format!("{}.csv", sheet.save_filename),
+            csv.to_string_lossy(),
+        );
+    }
+
+    /// Nothing opened, nothing to offer: the original default stands.
+    #[test]
+    fn a_grid_that_was_never_loaded_keeps_the_default_name() {
+        let sheet = Spreadsheet::new();
+
+        assert_eq!(sheet.save_filename, "spreadsheet");
+    }
+
+    /// A failed open does not change where a save would go.
+    #[test]
+    fn a_failed_open_leaves_the_save_target_alone() {
+        let mut sheet = Spreadsheet::new();
+        sheet
+            .load_from_file("/nonexistent/whatever.xlsx")
+            .expect_err("the file does not exist");
+
+        assert_eq!(sheet.save_filename, "spreadsheet");
+    }
+
+    /// Editing a workbook and saving updates that workbook in place.
+    ///
+    /// The source is held in memory, so writing over the file it was read from
+    /// is safe -- and this is the whole path a file manager exercises.
+    #[test]
+    fn saving_writes_back_over_the_file_that_was_opened() {
+        let dir = TempDir::new("in-place");
+        let target = std::path::PathBuf::from(dir.prefix("report")).with_extension("xlsx");
+        std::fs::copy(fixture("three_sheets.xlsx"), &target).expect("fixture is copyable");
+
+        let mut sheet = Spreadsheet::new();
+        sheet
+            .load_from_file(&target.to_string_lossy())
+            .expect("the copy loads");
+        sheet.set_cell(0, 0, "edited in place".to_string());
+        sheet.enter_save_mode();
+        sheet.save_to_file().expect("save succeeds");
+
+        let written = umya_spreadsheet::reader::xlsx::read(&target).expect("still a workbook");
+        assert_eq!(written.sheet_count(), 3, "every sheet survives");
+        assert_eq!(
+            value_at(&written, "Alpha", "A1"),
+            "edited in place",
+            "the original file was updated"
+        );
+        assert_eq!(
+            written
+                .sheet_by_name("Alpha")
+                .expect("Alpha exists")
+                .cell("C2")
+                .map(|cell| cell.formula().to_string())
+                .unwrap_or_default(),
+            "SUM(B2:B3)",
+            "and its formulas with it"
+        );
+    }
+
     /// Clearing a cell empties it in the saved file.
     #[test]
     fn a_cleared_cell_is_empty_in_the_saved_file() {

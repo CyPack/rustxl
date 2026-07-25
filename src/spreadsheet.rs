@@ -1446,7 +1446,7 @@ impl Spreadsheet {
             .unwrap_or("")
             .to_lowercase();
 
-        match extension.as_str() {
+        let loaded = match extension.as_str() {
             "csv" => self.load_csv(filepath),
             "tsv" => self.load_tsv(filepath),
             "xlsx" => self.load_xlsx(filepath),
@@ -1455,7 +1455,21 @@ impl Spreadsheet {
                 std::io::ErrorKind::InvalidInput,
                 format!("Unsupported file format: {}", extension),
             )),
+        };
+
+        // Saving should offer back the file that was opened. Otherwise editing
+        // a document and pressing save writes a new `spreadsheet.xlsx` into
+        // whatever directory the program happens to be running in, and the
+        // work looks lost -- which is exactly what happens when another
+        // program hands a file over to be edited.
+        //
+        // The extension is dropped because the save dialog adds one for the
+        // chosen format.
+        if loaded.is_ok() {
+            self.save_filename = path.with_extension("").to_string_lossy().into_owned();
         }
+
+        loaded
     }
 
     fn load_csv(&mut self, filepath: &str) -> std::io::Result<()> {
