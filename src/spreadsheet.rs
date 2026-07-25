@@ -322,29 +322,42 @@ impl Spreadsheet {
         true
     }
 
-    /// Scrolls the viewport by `delta` rows without moving the cursor.
+    /// Scrolls the viewport by `delta` rows, carrying the cursor with it.
     ///
-    /// The wheel moves the view, not the selection — that is what makes it a
-    /// wheel. The offset is clamped to the sheet so the grid cannot be scrolled
-    /// off its own end.
+    /// The cursor has to move too. Every frame ends with `adjust_scroll`, which
+    /// pulls the viewport back until the cursor is inside it — so a wheel event
+    /// that moved the view and left the cursor behind would be undone before
+    /// the user saw anything happen. Moving both keeps that adjustment a no-op.
+    ///
+    /// The offset is clamped to the sheet so the grid cannot be scrolled off
+    /// its own end.
     pub fn scroll_grid_vertically(&mut self, delta: isize) -> bool {
         let last_row = self.num_rows.saturating_sub(1);
         let target = self.scroll_row.saturating_add_signed(delta).min(last_row);
         if target == self.scroll_row {
             return false;
         }
+
+        let moved = target as isize - self.scroll_row as isize;
         self.scroll_row = target;
+        self.cursor_row = self.cursor_row.saturating_add_signed(moved).min(last_row);
         true
     }
 
-    /// Scrolls the viewport by `delta` columns without moving the cursor.
+    /// Scrolls the viewport by `delta` columns, carrying the cursor with it.
+    ///
+    /// Same reason as the vertical case: the renderer keeps the cursor on
+    /// screen, so the view cannot be moved away from it.
     pub fn scroll_grid_horizontally(&mut self, delta: isize) -> bool {
         let last_col = self.num_cols.saturating_sub(1);
         let target = self.scroll_col.saturating_add_signed(delta).min(last_col);
         if target == self.scroll_col {
             return false;
         }
+
+        let moved = target as isize - self.scroll_col as isize;
         self.scroll_col = target;
+        self.cursor_col = self.cursor_col.saturating_add_signed(moved).min(last_col);
         true
     }
 
