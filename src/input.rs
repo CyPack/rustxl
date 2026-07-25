@@ -103,8 +103,16 @@ pub fn run_app(
     }
 }
 
-/// How many rows or columns one notch of the wheel moves.
-const SCROLL_STEP: isize = 3;
+/// How many rows one notch of the wheel moves.
+const ROW_SCROLL_STEP: isize = 3;
+
+/// How many columns one notch of the horizontal wheel moves.
+///
+/// One, not three. A column is ten characters wide by default and a row is one
+/// line tall, so moving three of each would make a sideways notch travel about
+/// ten times as far across the screen as a vertical one — the grid jumps
+/// instead of scrolling, and it stops being obvious where you ended up.
+const COLUMN_SCROLL_STEP: isize = 1;
 
 /// Acts on a mouse event, if the grid is the thing the user is looking at.
 ///
@@ -128,12 +136,23 @@ pub fn handle_mouse(spreadsheet: &mut Spreadsheet, event: MouseEvent) -> bool {
 
     let geometry = spreadsheet.grid_geometry.clone();
     let target = hit_test(event.column, event.row, &geometry);
+    let sideways = event.modifiers.contains(KeyModifiers::SHIFT);
 
     match event.kind {
-        MouseEventKind::ScrollDown => spreadsheet.scroll_grid_vertically(SCROLL_STEP),
-        MouseEventKind::ScrollUp => spreadsheet.scroll_grid_vertically(-SCROLL_STEP),
-        MouseEventKind::ScrollRight => spreadsheet.scroll_grid_horizontally(SCROLL_STEP),
-        MouseEventKind::ScrollLeft => spreadsheet.scroll_grid_horizontally(-SCROLL_STEP),
+        // Shift turns the vertical wheel sideways. Spreadsheets and browsers
+        // have done this for long enough that it is what people try, and it is
+        // the only horizontal scrolling available on a mouse that has no thumb
+        // wheel.
+        MouseEventKind::ScrollDown if sideways => {
+            spreadsheet.scroll_grid_horizontally(COLUMN_SCROLL_STEP)
+        }
+        MouseEventKind::ScrollUp if sideways => {
+            spreadsheet.scroll_grid_horizontally(-COLUMN_SCROLL_STEP)
+        }
+        MouseEventKind::ScrollDown => spreadsheet.scroll_grid_vertically(ROW_SCROLL_STEP),
+        MouseEventKind::ScrollUp => spreadsheet.scroll_grid_vertically(-ROW_SCROLL_STEP),
+        MouseEventKind::ScrollRight => spreadsheet.scroll_grid_horizontally(COLUMN_SCROLL_STEP),
+        MouseEventKind::ScrollLeft => spreadsheet.scroll_grid_horizontally(-COLUMN_SCROLL_STEP),
         MouseEventKind::Down(MouseButton::Left) => match target {
             HitTarget::Cell { row, col } => spreadsheet.select_cell(row, col),
             HitTarget::ColumnHeader(col) => spreadsheet.select_whole_column(col),
@@ -1054,6 +1073,15 @@ mod mouse_input {
         at(MouseEventKind::Down(MouseButton::Left), column, row)
     }
 
+    fn with_shift(kind: MouseEventKind) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::SHIFT,
+        }
+    }
+
     #[test]
     fn clicking_a_cell_moves_the_cursor_there() {
         let mut sheet = sheet();
@@ -1136,7 +1164,8 @@ mod mouse_input {
         assert_eq!(sheet.cursor_row, row + 3, "the cursor followed the view");
         assert_eq!(sheet.cursor_col, col, "and nothing moved sideways");
 
-        assert!(handle_mouse(&mut sheet, at(MouseEventKind::ScrollUp, 10, 5)));
+        let back = at(MouseEventKind::ScrollUp, 10, 5);
+        assert!(handle_mouse(&mut sheet, back));
         assert_eq!(sheet.scroll_row, 0);
         assert_eq!(sheet.cursor_row, row, "scrolling back returns the cursor");
     }
@@ -1168,6 +1197,106 @@ mod mouse_input {
             sheet.scroll_row, scrolled_to,
             "drawing the next frame undid the scroll"
         );
+    }
+
+    /// A thumb wheel moves the grid sideways.
+    ///
+    /// Untested until now: the code was there, but nothing said it worked, so
+    /// a change to the match arms could have removed it without a failure.
+    #[test]
+    fn the_horizontal_wheel_scrolls_sideways() {
+        let mut sheet = sheet();
+        let (row, col) = (sheet.cursor_row, sheet.cursor_col);
+
+        let right = at(MouseEventKind::ScrollRight, 10, 5);
+        assert!(handle_mouse(&mut sheet, right));
+        assert_eq!(sheet.scroll_col, 1);
+        assert_eq!(sheet.cursor_col, col + 1, "the cursor came along");
+        assert_eq!(sheet.cursor_row, row, "and nothing moved up or down");
+
+        let left = at(MouseEventKind::ScrollLeft, 10, 5);
+        assert!(handle_mouse(&mut sheet, left));
+        assert_eq!(sheet.scroll_col, 0);
+        assert_eq!(sheet.cursor_col, col);
+    }
+
+    /// A sideways notch moves one column, not three.
+    ///
+    /// Columns are ten characters wide and rows are one line tall. Three of
+    /// each would send the view about ten times as far sideways as it goes
+    /// down, which reads as a jump rather than a scroll.
+    #[test]
+    fn a_sideways_notch_travels_less_far_than_a_vertical_one() {
+        let mut scrolled_sideways = sheet();
+        let sideways = at(MouseEventKind::ScrollRight, 10, 5);
+        assert!(handle_mouse(&mut scrolled_sideways, sideways));
+        let columns = scrolled_sideways.scroll_col;
+
+        let mut scrolled_down = sheet();
+        let down = at(MouseEventKind::ScrollDown, 10, 5);
+        assert!(handle_mouse(&mut scrolled_down, down));
+        let rows = scrolled_down.scroll_row;
+
+        assert!(
+            columns < rows,
+            "a column is wider than a row is tall: {columns} columns vs {rows} rows"
+        );
+    }
+
+    /// Holding shift turns the vertical wheel sideways.
+    ///
+    /// This is what a mouse without a thumb wheel has, and what people try
+    /// first because spreadsheets and browsers have always worked this way.
+    #[test]
+    fn shift_turns_the_vertical_wheel_sideways() {
+        let mut sheet = sheet();
+
+        let down = with_shift(MouseEventKind::ScrollDown);
+        assert!(handle_mouse(&mut sheet, down));
+        assert_eq!(sheet.scroll_col, 1, "moved sideways");
+        assert_eq!(sheet.scroll_row, 0, "and not down");
+
+        let up = with_shift(MouseEventKind::ScrollUp);
+        assert!(handle_mouse(&mut sheet, up));
+        assert_eq!(sheet.scroll_col, 0);
+        assert_eq!(sheet.scroll_row, 0);
+    }
+
+    /// Sideways scrolling survives the frame after it, like the vertical case.
+    #[test]
+    fn the_horizontal_wheel_still_has_an_effect_once_the_frame_is_drawn() {
+        let mut sheet = sheet();
+        let area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        let right = at(MouseEventKind::ScrollRight, 10, 5);
+        assert!(handle_mouse(&mut sheet, right));
+        let scrolled_to = sheet.scroll_col;
+        assert!(scrolled_to > 0, "the wheel moved the view");
+
+        sheet.adjust_scroll(area);
+
+        assert_eq!(
+            sheet.scroll_col, scrolled_to,
+            "drawing the next frame undid the sideways scroll"
+        );
+    }
+
+    #[test]
+    fn the_horizontal_wheel_cannot_scroll_past_the_edges_of_the_sheet() {
+        let mut sheet = sheet();
+        let left = at(MouseEventKind::ScrollLeft, 10, 5);
+        assert!(!handle_mouse(&mut sheet, left), "already at column A");
+        assert_eq!(sheet.scroll_col, 0);
+
+        sheet.scroll_col = sheet.num_cols - 1;
+        let right = at(MouseEventKind::ScrollRight, 10, 5);
+        assert!(!handle_mouse(&mut sheet, right), "already at column Z");
+        assert_eq!(sheet.scroll_col, sheet.num_cols - 1);
     }
 
     #[test]
