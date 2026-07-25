@@ -48,8 +48,34 @@ _ESCAPES = re.compile(
 
 
 def clean(raw: bytes) -> str:
-    """Strip terminal escape sequences, leaving the text the user can read."""
+    """Strip terminal escape sequences, leaving the text the user can read.
+
+    Only safe for output that is written once. Ratatui redraws differentially —
+    it emits just the cells that changed — so a screen assembled this way is a
+    concatenation of fragments, not a picture of the screen. Use `screen()` for
+    anything that inspects a frame after a keystroke.
+    """
     return _ESCAPES.sub(b"", raw).decode("utf-8", "replace")
+
+
+def screen(raw: bytes, rows: int = 40, cols: int = 120) -> str:
+    """Replay the output through a terminal emulator and return what is on screen.
+
+    This is the honest view: escape sequences are interpreted, cursor moves are
+    followed, and differential redraws land in the right cells. Without it, a
+    frame like "Gamma (3/3)" changing to "Alpha (1/3)" is emitted as a handful of
+    disconnected characters — the letters that happen to match are never re-sent —
+    and searching the raw stream for the new text finds nothing.
+    """
+    try:
+        import pyte
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError("screen() needs pyte: pip install pyte") from exc
+
+    emulator = pyte.Screen(cols, rows)
+    stream = pyte.Stream(emulator)
+    stream.feed(raw.decode("utf-8", "replace"))
+    return "\n".join(emulator.display)
 
 
 def run(
@@ -61,11 +87,18 @@ def run(
     rows: int = 40,
     cols: int = 120,
     binary: str = BINARY,
+    raw: bool = False,
 ) -> str:
-    """Run `xl` with `args`, optionally send `keys`, return the rendered text.
+    """Run `xl` with `args`, optionally send `keys`, return the final screen.
 
     `settle` is how long to wait for the first frame; `key_delay` how long to
     wait after each keystroke before reading again.
+
+    By default the output is replayed through a terminal emulator, so the result
+    is the screen as the user would see it after the last keystroke. Pass
+    `raw=True` for the concatenated output stream instead, which is what you want
+    when checking that something was printed at all rather than what a frame
+    ended up looking like.
     """
     pid, fd = pty.fork()
     if pid == 0:  # child
@@ -107,7 +140,8 @@ def run(
         pass
     os.close(fd)
 
-    return clean(bytes(buffer))
+    output = bytes(buffer)
+    return clean(output) if raw else screen(output, rows=rows, cols=cols)
 
 
 def last_frame(text: str) -> str:
