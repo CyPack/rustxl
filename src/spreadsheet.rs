@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use ratatui::layout::Rect;
 
 use crate::constants::{DEFAULT_COLS, DEFAULT_ROWS};
+use crate::hit_test::GridGeometry;
 use crate::sheet::Sheet;
 use crate::types::{CellStyle, RowColumnSelectMode, SaveFormat, VisualSubMode};
 use crate::update::UpdateInfo;
@@ -91,6 +92,12 @@ pub struct Spreadsheet {
     /// working copy first, or the active entry will be stale.
     pub sheets: Vec<Sheet>,
     pub active_sheet: usize,
+    /// What the grid looked like when it was last drawn.
+    ///
+    /// Mouse input arrives as a screen position, and only the renderer knows
+    /// where each row and column ended up. Recording the geometry as it is drawn
+    /// is what lets a click be resolved back to a cell.
+    pub grid_geometry: GridGeometry,
 }
 
 impl Spreadsheet {
@@ -147,6 +154,7 @@ impl Spreadsheet {
             formula_prefix: String::new(),
             sheets: vec![Sheet::default()],
             active_sheet: 0,
+            grid_geometry: GridGeometry::default(),
         }
     }
 
@@ -226,6 +234,95 @@ impl Spreadsheet {
         self.park_active_sheet();
         self.checkout_sheet(index);
         self.clear_selection();
+        true
+    }
+
+    /// Puts the cursor on a cell and starts a fresh selection there.
+    ///
+    /// Out-of-range coordinates are ignored rather than clamped: a click that
+    /// landed outside the sheet should do nothing, not quietly pick the nearest
+    /// cell.
+    pub fn select_cell(&mut self, row: usize, col: usize) -> bool {
+        if row >= self.num_rows || col >= self.num_cols {
+            return false;
+        }
+        self.cursor_row = row;
+        self.cursor_col = col;
+        self.selection_anchor = None;
+        self.row_column_select_mode = RowColumnSelectMode::None;
+        self.selected_rows = None;
+        self.selected_cols = None;
+        true
+    }
+
+    /// Grows the selection from its anchor to this cell.
+    ///
+    /// The anchor is set on the first call so that a drag which begins on the
+    /// current cell selects the range it covers.
+    pub fn extend_selection_to(&mut self, row: usize, col: usize) -> bool {
+        if row >= self.num_rows || col >= self.num_cols {
+            return false;
+        }
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some((self.cursor_row, self.cursor_col));
+        }
+        if (self.cursor_row, self.cursor_col) == (row, col) {
+            return false;
+        }
+        self.cursor_row = row;
+        self.cursor_col = col;
+        true
+    }
+
+    /// Selects a whole column, as clicking its letter does in a spreadsheet.
+    pub fn select_whole_column(&mut self, col: usize) -> bool {
+        if col >= self.num_cols {
+            return false;
+        }
+        self.cursor_col = col;
+        self.selection_anchor = None;
+        self.selected_rows = None;
+        self.selected_cols = Some((col, col));
+        self.row_column_select_mode = RowColumnSelectMode::ColumnSelect;
+        true
+    }
+
+    /// Selects a whole row, as clicking its number does in a spreadsheet.
+    pub fn select_whole_row(&mut self, row: usize) -> bool {
+        if row >= self.num_rows {
+            return false;
+        }
+        self.cursor_row = row;
+        self.selection_anchor = None;
+        self.selected_cols = None;
+        self.selected_rows = Some((row, row));
+        self.row_column_select_mode = RowColumnSelectMode::RowSelect;
+        true
+    }
+
+    /// Scrolls the viewport by `delta` rows without moving the cursor.
+    ///
+    /// The wheel moves the view, not the selection — that is what makes it a
+    /// wheel. The offset is clamped to the sheet so the grid cannot be scrolled
+    /// off its own end.
+    pub fn scroll_grid_vertically(&mut self, delta: isize) -> bool {
+        let last_row = self.num_rows.saturating_sub(1);
+        let target = self.scroll_row.saturating_add_signed(delta).min(last_row);
+        if target == self.scroll_row {
+            return false;
+        }
+        self.scroll_row = target;
+        true
+    }
+
+    /// Scrolls the viewport by `delta` columns without moving the cursor.
+    pub fn scroll_grid_horizontally(&mut self, delta: isize) -> bool {
+        let last_col = self.num_cols.saturating_sub(1);
+        let target = self.scroll_col.saturating_add_signed(delta).min(last_col);
+        if target == self.scroll_col {
+            return false;
+        }
+        self.scroll_col = target;
         true
     }
 
