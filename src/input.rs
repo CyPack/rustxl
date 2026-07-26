@@ -144,7 +144,12 @@ pub fn handle_mouse(spreadsheet: &mut Spreadsheet, event: MouseEvent) -> bool {
             .toolbar_geometry
             .action_at(event.column, event.row)
         {
-            return spreadsheet.apply_toolbar_action(action);
+            // Light the button first: an action that changes nothing visible
+            // — copying a row, clearing a colour that was already absent —
+            // must still answer the press, or the button reads as broken.
+            spreadsheet.flash_toolbar(action);
+            spreadsheet.apply_toolbar_action(action);
+            return true;
         }
     }
 

@@ -124,6 +124,11 @@ pub struct Spreadsheet {
     pub toolbar_palette: Option<crate::toolbar::PaletteTarget>,
     /// Toolbar button rectangles as drawn in the last frame.
     pub toolbar_geometry: crate::toolbar::ToolbarGeometry,
+    /// The button the mouse just pressed, and when. A terminal has no cursor
+    /// shadow and no hover state, so without a brief flash under the pointer
+    /// a click on a button that does something quiet — copy, or a colour on
+    /// an already-coloured cell — is indistinguishable from a missed click.
+    pub toolbar_pressed: Option<(crate::toolbar::ToolbarAction, std::time::Instant)>,
     /// The TSV this grid last wrote to the system clipboard. Paste compares
     /// it against the live system clipboard to decide whether the internal
     /// (style-carrying) copy is still the newest thing the user copied.
@@ -195,6 +200,7 @@ impl Spreadsheet {
             last_copied_text: None,
             toolbar_palette: None,
             toolbar_geometry: crate::toolbar::ToolbarGeometry::default(),
+            toolbar_pressed: None,
             dirty_since: None,
             opened_xlsx: None,
         }

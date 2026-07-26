@@ -23,6 +23,7 @@ pub enum ToolbarAction {
     InsertRowBelow,
     DeleteRow,
     CopyRow,
+    Paste,
     TextColor,
     FillColor,
     BorderColor,
@@ -58,7 +59,28 @@ impl ToolbarGeometry {
     }
 }
 
+/// How long a pressed button stays lit. Long enough to be seen at the far end
+/// of a click, short enough that it is gone before the eye moves on; the main
+/// loop redraws on its own tick, so the flash clears itself without an event.
+pub const PRESS_FLASH: std::time::Duration = std::time::Duration::from_millis(180);
+
 impl Spreadsheet {
+    /// Light one button up because the mouse just pressed it.
+    pub fn flash_toolbar(&mut self, action: ToolbarAction) {
+        self.toolbar_pressed = Some((action, std::time::Instant::now()));
+    }
+
+    /// Whether this button should be drawn pressed right now.
+    pub fn toolbar_is_pressed(&self, action: ToolbarAction) -> bool {
+        self.toolbar_is_pressed_at(action, std::time::Instant::now())
+    }
+
+    /// The clock-free half, so the fade is testable without sleeping.
+    pub fn toolbar_is_pressed_at(&self, action: ToolbarAction, now: std::time::Instant) -> bool {
+        self.toolbar_pressed
+            .is_some_and(|(pressed, at)| pressed == action && now.duration_since(at) < PRESS_FLASH)
+    }
+
     /// Perform one toolbar action. Returns whether anything changed.
     pub fn apply_toolbar_action(&mut self, action: ToolbarAction) -> bool {
         match action {
@@ -78,6 +100,13 @@ impl Spreadsheet {
             }
             ToolbarAction::CopyRow => {
                 self.copy_cursor_row();
+                true
+            }
+            // Copy without paste is half a clipboard. `paste` already decides
+            // between the internal styled copy and the system clipboard, so
+            // the button is the same door the keyboard uses.
+            ToolbarAction::Paste => {
+                self.paste();
                 true
             }
             ToolbarAction::TextColor => {

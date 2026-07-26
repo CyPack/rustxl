@@ -172,6 +172,13 @@ fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
     let mut geometry = crate::toolbar::ToolbarGeometry::default();
     let mut x = area.x + 1;
     let y = area.y;
+    // Which button the mouse is holding down, if the flash has not faded.
+    // Read once, before the drawing closure borrows the geometry, so every
+    // button in this frame agrees about it.
+    let now = std::time::Instant::now();
+    let pressed = spreadsheet.toolbar_pressed.and_then(|(action, at)| {
+        (now.duration_since(at) < crate::toolbar::PRESS_FLASH).then_some(action)
+    });
     let mut draw = |f: &mut Frame,
                     x: &mut u16,
                     label: &str,
@@ -180,7 +187,14 @@ fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
                     active: bool| {
         let width = label.chars().count() as u16 + 2;
         let rect = Rect::new(*x, y, width, 1);
-        let style = if active {
+        let style = if action.is_some_and(|action| pressed == Some(action)) {
+            // Fully inverted, so the press is unmistakable against both the
+            // ordinary and the palette-open styles beside it.
+            Style::default()
+                .bg(text_fg)
+                .fg(bar_bg)
+                .add_modifier(Modifier::BOLD)
+        } else if active {
             Style::default().bg(SELECTED_HEADER_BG).fg(Color::Black)
         } else if enabled {
             Style::default().bg(bar_bg).fg(text_fg)
@@ -252,6 +266,14 @@ fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
         true,
         false,
     );
+    draw(
+        f,
+        &mut x,
+        "⎘ Yapıştır",
+        Some(ToolbarAction::Paste),
+        true,
+        false,
+    );
     sep(f, &mut x);
     draw(
         f,
@@ -311,8 +333,15 @@ fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
         );
         for (index, (color, _)) in crate::constants::COLOR_PALETTE.iter().enumerate() {
             let rect = Rect::new(px, py, 4, 1);
+            // A swatch cannot invert its background without becoming a
+            // different colour, so a pressed one is marked instead.
+            let label = if pressed == Some(ToolbarAction::PaletteColor(index)) {
+                " ✓  "
+            } else {
+                "    "
+            };
             f.render_widget(
-                Paragraph::new("    ").style(Style::default().bg(*color)),
+                Paragraph::new(label).style(Style::default().bg(*color).fg(Color::Black)),
                 rect,
             );
             geometry
@@ -321,10 +350,15 @@ fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
             px = px.saturating_add(5);
         }
         let rect = Rect::new(px, py, 9, 1);
-        f.render_widget(
-            Paragraph::new(" ✕ temiz ").style(Style::default().bg(bar_bg).fg(text_fg)),
-            rect,
-        );
+        let clear_style = if pressed == Some(ToolbarAction::PaletteClear) {
+            Style::default()
+                .bg(text_fg)
+                .fg(bar_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().bg(bar_bg).fg(text_fg)
+        };
+        f.render_widget(Paragraph::new(" ✕ temiz ").style(clear_style), rect);
         geometry.buttons.push((rect, ToolbarAction::PaletteClear));
     }
 
@@ -1608,4 +1642,97 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
             .style(Style::default().bg(Color::Rgb(35, 45, 45))),
         inner_area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::toolbar::{PRESS_FLASH, ToolbarAction};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    /// Draw one frame into an off-screen terminal and hand back the geometry
+    /// the toolbar recorded, so a test can ask where a button actually is
+    /// rather than assuming where it ought to be.
+    fn draw(spreadsheet: &mut Spreadsheet) {
+        let mut terminal =
+            Terminal::new(TestBackend::new(120, 30)).expect("off-screen terminal starts");
+        terminal
+            .draw(|f| render(f, spreadsheet))
+            .expect("one frame draws");
+    }
+
+    #[test]
+    fn the_toolbar_offers_paste_beside_copy() {
+        let mut sheet = Spreadsheet::new();
+        draw(&mut sheet);
+
+        let paste = sheet
+            .toolbar_geometry
+            .buttons
+            .iter()
+            .find(|(_, action)| *action == ToolbarAction::Paste)
+            .map(|(rect, _)| *rect)
+            .expect("a copy button with no paste beside it is half a clipboard");
+        let copy = sheet
+            .toolbar_geometry
+            .buttons
+            .iter()
+            .find(|(_, action)| *action == ToolbarAction::CopyRow)
+            .map(|(rect, _)| *rect)
+            .expect("copy button");
+        assert!(
+            paste.x > copy.x,
+            "paste follows copy, in the order the pair is used"
+        );
+        assert_eq!(
+            sheet
+                .toolbar_geometry
+                .action_at(paste.x, paste.y)
+                .expect("the drawn rect resolves back to its action"),
+            ToolbarAction::Paste
+        );
+    }
+
+    #[test]
+    fn a_pressed_button_is_drawn_lit_and_the_flash_fades_on_its_own() {
+        let mut sheet = Spreadsheet::new();
+        draw(&mut sheet);
+        let undo = sheet
+            .toolbar_geometry
+            .buttons
+            .iter()
+            .find(|(_, action)| *action == ToolbarAction::InsertRowBelow)
+            .map(|(rect, _)| *rect)
+            .expect("a button that is always enabled");
+
+        // Nothing is lit before the press.
+        let mut terminal =
+            Terminal::new(TestBackend::new(120, 30)).expect("off-screen terminal starts");
+        terminal
+            .draw(|f| render(f, &mut sheet))
+            .expect("frame draws");
+        let resting = terminal.backend().buffer()[(undo.x, undo.y)].style();
+
+        sheet.flash_toolbar(ToolbarAction::InsertRowBelow);
+        assert!(sheet.toolbar_is_pressed(ToolbarAction::InsertRowBelow));
+        assert!(
+            !sheet.toolbar_is_pressed(ToolbarAction::Undo),
+            "only the pressed button lights up"
+        );
+
+        terminal
+            .draw(|f| render(f, &mut sheet))
+            .expect("frame draws");
+        let lit = terminal.backend().buffer()[(undo.x, undo.y)].style();
+        assert_ne!(
+            lit, resting,
+            "a press with no visible answer reads as a missed click"
+        );
+
+        // The flash is a moment, not a mode: it expires without another event,
+        // which the main loop's redraw tick then clears.
+        let later = std::time::Instant::now() + PRESS_FLASH;
+        assert!(!sheet.toolbar_is_pressed_at(ToolbarAction::InsertRowBelow, later));
+    }
 }
