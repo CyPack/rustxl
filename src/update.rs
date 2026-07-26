@@ -142,13 +142,12 @@ pub fn spawn_update_checker() -> mpsc::Receiver<UpdateMessage> {
 /// Downloads and installs the update
 pub fn download_and_install(update_info: &UpdateInfo) -> Result<(), String> {
     // Get the current executable path
-    let current_exe = env::current_exe()
-        .map_err(|e| format!("Failed to get current executable path: {}", e))?;
+    let current_exe =
+        env::current_exe().map_err(|e| format!("Failed to get current executable path: {}", e))?;
 
     // Create a temporary directory for download
     let temp_dir = env::temp_dir().join("xl-update");
-    fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     let archive_path = temp_dir.join(&update_info.asset_name);
 
@@ -180,15 +179,17 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<(), String> {
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
     if !response.status().is_success() {
-        return Err(format!("Download failed with status: {}", response.status()));
+        return Err(format!(
+            "Download failed with status: {}",
+            response.status()
+        ));
     }
 
     let bytes = response
         .bytes()
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let mut file =
-        File::create(dest).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut file = File::create(dest).map_err(|e| format!("Failed to create file: {}", e))?;
 
     file.write_all(&bytes)
         .map_err(|e| format!("Failed to write file: {}", e))?;
@@ -197,8 +198,7 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<(), String> {
 }
 
 fn extract_archive(archive_path: &PathBuf, dest_dir: &PathBuf) -> Result<PathBuf, String> {
-    let file =
-        File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
     let decoder = GzDecoder::new(file);
     let mut archive = Archive::new(decoder);

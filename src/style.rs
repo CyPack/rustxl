@@ -1,8 +1,8 @@
 use ratatui::style::Color;
 
 use crate::constants::{
-    DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, MAX_COL_WIDTH, MAX_ROW_HEIGHT,
-    MIN_COL_WIDTH, MIN_ROW_HEIGHT,
+    DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, MAX_COL_WIDTH, MAX_ROW_HEIGHT, MIN_COL_WIDTH,
+    MIN_ROW_HEIGHT,
 };
 use crate::spreadsheet::Spreadsheet;
 use crate::types::{CellStyle, DataType, TextAlignment, VerticalAlignment};
@@ -35,13 +35,22 @@ impl Spreadsheet {
     }
 
     pub fn get_cell_style(&self, row: usize, col: usize) -> CellStyle {
-        self.cell_styles.get(&(row, col)).copied().unwrap_or_default()
+        self.cell_styles
+            .get(&(row, col))
+            .copied()
+            .unwrap_or_default()
     }
 
     pub fn set_cell_fg(&mut self, row: usize, col: usize, color: Option<Color>) {
         let mut style = self.get_cell_style(row, col);
         style.fg = color;
-        if style.fg.is_none() && style.bg.is_none() && !style.bold && style.alignment.is_none() && style.vertical_alignment.is_none() && style.data_type.is_none() {
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+        {
             self.cell_styles.remove(&(row, col));
         } else {
             self.cell_styles.insert((row, col), style);
@@ -51,7 +60,13 @@ impl Spreadsheet {
     pub fn set_cell_bg(&mut self, row: usize, col: usize, color: Option<Color>) {
         let mut style = self.get_cell_style(row, col);
         style.bg = color;
-        if style.fg.is_none() && style.bg.is_none() && !style.bold && style.alignment.is_none() && style.vertical_alignment.is_none() && style.data_type.is_none() {
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+        {
             self.cell_styles.remove(&(row, col));
         } else {
             self.cell_styles.insert((row, col), style);
@@ -61,7 +76,13 @@ impl Spreadsheet {
     pub fn set_cell_bold(&mut self, row: usize, col: usize, bold: bool) {
         let mut style = self.get_cell_style(row, col);
         style.bold = bold;
-        if style.fg.is_none() && style.bg.is_none() && !style.bold && style.alignment.is_none() && style.vertical_alignment.is_none() && style.data_type.is_none() {
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+        {
             self.cell_styles.remove(&(row, col));
         } else {
             self.cell_styles.insert((row, col), style);
@@ -71,17 +92,34 @@ impl Spreadsheet {
     pub fn set_cell_alignment(&mut self, row: usize, col: usize, alignment: Option<TextAlignment>) {
         let mut style = self.get_cell_style(row, col);
         style.alignment = alignment;
-        if style.fg.is_none() && style.bg.is_none() && !style.bold && style.alignment.is_none() && style.vertical_alignment.is_none() && style.data_type.is_none() {
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+        {
             self.cell_styles.remove(&(row, col));
         } else {
             self.cell_styles.insert((row, col), style);
         }
     }
 
-    pub fn set_cell_vertical_alignment(&mut self, row: usize, col: usize, vertical_alignment: Option<VerticalAlignment>) {
+    pub fn set_cell_vertical_alignment(
+        &mut self,
+        row: usize,
+        col: usize,
+        vertical_alignment: Option<VerticalAlignment>,
+    ) {
         let mut style = self.get_cell_style(row, col);
         style.vertical_alignment = vertical_alignment;
-        if style.fg.is_none() && style.bg.is_none() && !style.bold && style.alignment.is_none() && style.vertical_alignment.is_none() && style.data_type.is_none() {
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+        {
             self.cell_styles.remove(&(row, col));
         } else {
             self.cell_styles.insert((row, col), style);
@@ -91,7 +129,13 @@ impl Spreadsheet {
     pub fn set_cell_data_type(&mut self, row: usize, col: usize, data_type: Option<DataType>) {
         let mut style = self.get_cell_style(row, col);
         style.data_type = data_type;
-        if style.fg.is_none() && style.bg.is_none() && !style.bold && style.alignment.is_none() && style.vertical_alignment.is_none() && style.data_type.is_none() {
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+        {
             self.cell_styles.remove(&(row, col));
         } else {
             self.cell_styles.insert((row, col), style);
@@ -102,7 +146,9 @@ impl Spreadsheet {
         // Determine default alignment based on data type
         let default_alignment = match data_type {
             Some(DataType::Text) => Some(TextAlignment::Left),
-            Some(DataType::Number) | Some(DataType::Currency) | Some(DataType::Percentage) => Some(TextAlignment::Right),
+            Some(DataType::Number) | Some(DataType::Currency) | Some(DataType::Percentage) => {
+                Some(TextAlignment::Right)
+            }
             _ => None, // For Date, Time, or None, don't change alignment
         };
 
@@ -129,12 +175,12 @@ impl Spreadsheet {
         // Auto-detect table bounds starting from cursor position
         let start_row = self.cursor_row;
         let start_col = self.cursor_col;
-        
+
         // Check if starting cell has data
         if self.get_cell(start_row, start_col).is_empty() {
             return;
         }
-        
+
         // Find the leftmost column with data in the header row (scan left from cursor)
         let mut min_col = start_col;
         for col in (0..=start_col).rev() {
@@ -144,7 +190,7 @@ impl Spreadsheet {
                 break;
             }
         }
-        
+
         // Find the rightmost column with data in the header row
         let mut max_col = start_col;
         for col in start_col..self.num_cols {
@@ -154,7 +200,7 @@ impl Spreadsheet {
                 break;
             }
         }
-        
+
         // Find the topmost row with data in any column of the table (scan up from cursor)
         let mut min_row = start_row;
         for row in (0..=start_row).rev() {
@@ -171,7 +217,7 @@ impl Spreadsheet {
                 break;
             }
         }
-        
+
         // Find the bottommost row with data in any column of the table
         let mut max_row = start_row;
         for row in start_row..self.num_rows {
@@ -188,30 +234,30 @@ impl Spreadsheet {
                 break;
             }
         }
-        
+
         // Auto-select the detected table range
         self.selection_anchor = Some((min_row, min_col));
         self.cursor_row = max_row;
         self.cursor_col = max_col;
-        
+
         // First row is headers - make them bold and solid black
         let header_fg = Color::Rgb(0, 0, 0); // Pure black (RGB 0,0,0)
         for col in min_col..=max_col {
             self.set_cell_bold(min_row, col, true);
             self.set_cell_fg(min_row, col, Some(header_fg));
         }
-        
+
         // Apply alternating row colors (zebra striping)
         // Light gray for even rows, white for odd rows (starting from row after header)
         let header_bg = Color::Rgb(240, 240, 240); // Light gray for header
         let even_row_bg = Color::Rgb(250, 250, 250); // Very light gray for even rows
         let odd_row_bg = Color::White; // White for odd rows
-        
+
         // Set header background
         for col in min_col..=max_col {
             self.set_cell_bg(min_row, col, Some(header_bg));
         }
-        
+
         // Apply zebra striping to data rows
         for row in (min_row + 1)..=max_row {
             let is_even = (row - min_row - 1) % 2 == 0;
@@ -256,7 +302,10 @@ impl Spreadsheet {
         }
     }
 
-    pub fn apply_vertical_alignment_to_selection(&mut self, vertical_alignment: Option<VerticalAlignment>) {
+    pub fn apply_vertical_alignment_to_selection(
+        &mut self,
+        vertical_alignment: Option<VerticalAlignment>,
+    ) {
         if let Some(((min_row, min_col), (max_row, max_col))) = self.get_selection_range() {
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
@@ -325,28 +374,32 @@ mod tests {
     }
 }
 
-    #[test]
-    fn test_apply_bold_to_selection() {
-        let mut sheet = Spreadsheet::new();
-        
-        // Test single cell (no selection)
-        sheet.cursor_row = 0;
-        sheet.cursor_col = 0;
-        sheet.apply_bold_to_selection(true);
-        
-        let style = sheet.get_cell_style(0, 0);
-        assert!(style.bold, "Bold should be true for single cell");
-        
-        // Test with selection range
-        sheet.selection_anchor = Some((1, 1));
-        sheet.cursor_row = 2;
-        sheet.cursor_col = 2;
-        sheet.apply_bold_to_selection(true);
-        
-        for row in 1..=2 {
-            for col in 1..=2 {
-                let style = sheet.get_cell_style(row, col);
-                assert!(style.bold, "Bold should be true for cell ({}, {})", row, col);
-            }
+#[test]
+fn test_apply_bold_to_selection() {
+    let mut sheet = Spreadsheet::new();
+
+    // Test single cell (no selection)
+    sheet.cursor_row = 0;
+    sheet.cursor_col = 0;
+    sheet.apply_bold_to_selection(true);
+
+    let style = sheet.get_cell_style(0, 0);
+    assert!(style.bold, "Bold should be true for single cell");
+
+    // Test with selection range
+    sheet.selection_anchor = Some((1, 1));
+    sheet.cursor_row = 2;
+    sheet.cursor_col = 2;
+    sheet.apply_bold_to_selection(true);
+
+    for row in 1..=2 {
+        for col in 1..=2 {
+            let style = sheet.get_cell_style(row, col);
+            assert!(
+                style.bold,
+                "Bold should be true for cell ({}, {})",
+                row, col
+            );
         }
     }
+}
