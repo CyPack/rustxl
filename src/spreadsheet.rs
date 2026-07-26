@@ -120,6 +120,10 @@ pub struct Spreadsheet {
     /// When the first unsaved change landed. `None` means clean. The main
     /// loop's tick turns this into an automatic save once it is old enough.
     pub dirty_since: Option<std::time::Instant>,
+    /// Which palette (text/fill) the toolbar has open, if any.
+    pub toolbar_palette: Option<crate::toolbar::PaletteTarget>,
+    /// Toolbar button rectangles as drawn in the last frame.
+    pub toolbar_geometry: crate::toolbar::ToolbarGeometry,
     /// The TSV this grid last wrote to the system clipboard. Paste compares
     /// it against the live system clipboard to decide whether the internal
     /// (style-carrying) copy is still the newest thing the user copied.
@@ -189,6 +193,8 @@ impl Spreadsheet {
             source: None,
             undo_stack: crate::undo::UndoStack::default(),
             last_copied_text: None,
+            toolbar_palette: None,
+            toolbar_geometry: crate::toolbar::ToolbarGeometry::default(),
             dirty_since: None,
             opened_xlsx: None,
         }
@@ -1377,7 +1383,7 @@ impl Spreadsheet {
         }
     }
 
-    fn insert_row_after(&mut self, row: usize) {
+    pub(crate) fn insert_row_after(&mut self, row: usize) {
         // Increase num_rows
         self.num_rows += 1;
         // Shift all cells below (and including) row+1 down by 1
@@ -1419,7 +1425,7 @@ impl Spreadsheet {
         }
     }
 
-    fn delete_row(&mut self, row: usize) {
+    pub(crate) fn delete_row(&mut self, row: usize) {
         // Remove all cells in this row
         for col in 0..self.num_cols {
             self.cells.remove(&(row, col));

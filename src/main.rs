@@ -7,6 +7,7 @@ mod settings;
 mod sheet;
 mod spreadsheet;
 mod style;
+mod toolbar;
 mod types;
 mod ui;
 mod undo;

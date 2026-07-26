@@ -90,53 +90,56 @@ pub fn render(f: &mut Frame, spreadsheet: &mut Spreadsheet) {
         0
     };
 
-    // Update bar is now rendered as a floating widget, so we don't include it in the layout
-    let chunks = match (has_stats, has_autocomplete) {
-        (true, true) => Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Length(autocomplete_height),
-            Constraint::Min(5),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .split(area),
-        (true, false) => Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Min(5),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .split(area),
-        (false, true) => Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Length(autocomplete_height),
-            Constraint::Min(5),
-            Constraint::Length(1),
-        ])
-        .split(area),
-        (false, false) => Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Min(5),
-            Constraint::Length(1),
-        ])
-        .split(area),
+    // The toolbar sits under the formula bar; an open colour palette adds a
+    // swatch row beneath it.
+    let toolbar_height: u16 = if spreadsheet.toolbar_palette.is_some() {
+        2
+    } else {
+        1
     };
 
+    // Update bar is now rendered as a floating widget, so we don't include it
+    // in the layout. Constraints are assembled dynamically: the optional
+    // autocomplete and stats rows made a 4-arm match, and the toolbar would
+    // have doubled it.
+    let mut constraints = vec![Constraint::Length(3), Constraint::Length(toolbar_height)];
+    if has_autocomplete {
+        constraints.push(Constraint::Length(autocomplete_height));
+    }
+    constraints.push(Constraint::Min(5));
+    if has_stats {
+        constraints.push(Constraint::Length(1));
+    }
+    constraints.push(Constraint::Length(1));
+    let chunks = Layout::vertical(constraints).split(area);
+
     let formula_bar_area = chunks[0];
-    let (autocomplete_area, grid_area, stats_area, status_area) =
-        match (has_stats, has_autocomplete) {
-            (true, true) => (Some(chunks[1]), chunks[2], Some(chunks[3]), chunks[4]),
-            (true, false) => (None, chunks[1], Some(chunks[2]), chunks[3]),
-            (false, true) => (Some(chunks[1]), chunks[2], None, chunks[3]),
-            (false, false) => (None, chunks[1], None, chunks[2]),
-        };
+    let toolbar_area = chunks[1];
+    let mut next = 2;
+    let autocomplete_area = if has_autocomplete {
+        next += 1;
+        Some(chunks[next - 1])
+    } else {
+        None
+    };
+    let grid_area = chunks[next];
+    next += 1;
+    let stats_area = if has_stats {
+        next += 1;
+        Some(chunks[next - 1])
+    } else {
+        None
+    };
+    let status_area = chunks[next];
 
     spreadsheet.adjust_scroll(grid_area);
 
     let visible_cols = spreadsheet.visible_cols(grid_area.width);
-    let visible_rows = spreadsheet.visible_rows(area.height);
+    // The toolbar took rows from the same budget the magic 7 accounted for.
+    let visible_rows = spreadsheet.visible_rows(area.height.saturating_sub(toolbar_height));
 
     render_formula_bar(f, spreadsheet, formula_bar_area);
+    render_toolbar(f, spreadsheet, toolbar_area);
     if let Some(autocomplete_area) = autocomplete_area {
         render_autocomplete(f, spreadsheet, autocomplete_area);
     }
@@ -150,6 +153,174 @@ pub fn render(f: &mut Frame, spreadsheet: &mut Spreadsheet) {
     if has_update {
         render_update_bar(f, spreadsheet, area);
     }
+}
+
+/// The clickable header strip: undo/redo, row surgery, colour tools, and the
+/// save state. Every button's rectangle is recorded into `toolbar_geometry`
+/// as it is drawn, so the mouse resolves clicks through the same table the
+/// renderer painted — the two cannot drift apart.
+fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
+    use crate::toolbar::{PaletteTarget, ToolbarAction};
+
+    let (bar_bg, text_fg, dim_fg) = if spreadsheet.dark_mode {
+        (DARK_FORMULA_BAR_BG, DARK_CELL_FG, Color::Rgb(120, 120, 120))
+    } else {
+        (FORMULA_BAR_BG, CELL_FG, Color::Rgb(140, 140, 140))
+    };
+    f.render_widget(Paragraph::new("").style(Style::default().bg(bar_bg)), area);
+
+    let mut geometry = crate::toolbar::ToolbarGeometry::default();
+    let mut x = area.x + 1;
+    let y = area.y;
+    let mut draw = |f: &mut Frame,
+                    x: &mut u16,
+                    label: &str,
+                    action: Option<ToolbarAction>,
+                    enabled: bool,
+                    active: bool| {
+        let width = label.chars().count() as u16 + 2;
+        let rect = Rect::new(*x, y, width, 1);
+        let style = if active {
+            Style::default().bg(SELECTED_HEADER_BG).fg(Color::Black)
+        } else if enabled {
+            Style::default().bg(bar_bg).fg(text_fg)
+        } else {
+            Style::default().bg(bar_bg).fg(dim_fg)
+        };
+        f.render_widget(Paragraph::new(format!(" {label} ")).style(style), rect);
+        if let (Some(action), true) = (action, enabled) {
+            geometry.buttons.push((rect, action));
+        }
+        *x = x.saturating_add(width);
+    };
+    let mut sep = |f: &mut Frame, x: &mut u16| {
+        let rect = Rect::new(*x, y, 1, 1);
+        f.render_widget(
+            Paragraph::new("│").style(Style::default().bg(bar_bg).fg(dim_fg)),
+            rect,
+        );
+        *x = x.saturating_add(1);
+    };
+
+    let palette = spreadsheet.toolbar_palette;
+    draw(
+        f,
+        &mut x,
+        "↶ Geri",
+        Some(ToolbarAction::Undo),
+        spreadsheet.can_undo(),
+        false,
+    );
+    draw(
+        f,
+        &mut x,
+        "↷ İleri",
+        Some(ToolbarAction::Redo),
+        spreadsheet.can_redo(),
+        false,
+    );
+    sep(f, &mut x);
+    draw(
+        f,
+        &mut x,
+        "⊕ Üst",
+        Some(ToolbarAction::InsertRowAbove),
+        true,
+        false,
+    );
+    draw(
+        f,
+        &mut x,
+        "⊕ Alt",
+        Some(ToolbarAction::InsertRowBelow),
+        true,
+        false,
+    );
+    draw(
+        f,
+        &mut x,
+        "⌫ Satır",
+        Some(ToolbarAction::DeleteRow),
+        true,
+        false,
+    );
+    draw(
+        f,
+        &mut x,
+        "⧉ Satır",
+        Some(ToolbarAction::CopyRow),
+        true,
+        false,
+    );
+    sep(f, &mut x);
+    draw(
+        f,
+        &mut x,
+        "A Renk",
+        Some(ToolbarAction::TextColor),
+        true,
+        palette == Some(PaletteTarget::Text),
+    );
+    draw(
+        f,
+        &mut x,
+        "▧ Dolgu",
+        Some(ToolbarAction::FillColor),
+        true,
+        palette == Some(PaletteTarget::Fill),
+    );
+
+    // Save state, right-aligned: the answer to "kaydoldu mu?" without a key.
+    let save_label = if spreadsheet.opened_xlsx.is_none() {
+        String::new()
+    } else if spreadsheet.dirty_since.is_some() {
+        "● kaydediliyor…".to_string()
+    } else {
+        "✓ kayıtlı".to_string()
+    };
+    if !save_label.is_empty() {
+        let width = save_label.chars().count() as u16 + 1;
+        let rect = Rect::new(area.x + area.width.saturating_sub(width + 1), y, width, 1);
+        let fg = if spreadsheet.dirty_since.is_some() {
+            Color::Rgb(200, 140, 0)
+        } else {
+            Color::Rgb(0, 140, 60)
+        };
+        f.render_widget(
+            Paragraph::new(save_label).style(Style::default().bg(bar_bg).fg(fg)),
+            rect,
+        );
+    }
+
+    // The swatch row, when a colour tool is open: ten palette colours plus a
+    // clear button, applying to whatever is selected.
+    if palette.is_some() && area.height > 1 {
+        let mut px = area.x + 1;
+        let py = y + 1;
+        f.render_widget(
+            Paragraph::new("").style(Style::default().bg(bar_bg)),
+            Rect::new(area.x, py, area.width, 1),
+        );
+        for (index, (color, _)) in crate::constants::COLOR_PALETTE.iter().enumerate() {
+            let rect = Rect::new(px, py, 4, 1);
+            f.render_widget(
+                Paragraph::new("    ").style(Style::default().bg(*color)),
+                rect,
+            );
+            geometry
+                .buttons
+                .push((rect, ToolbarAction::PaletteColor(index)));
+            px = px.saturating_add(5);
+        }
+        let rect = Rect::new(px, py, 9, 1);
+        f.render_widget(
+            Paragraph::new(" ✕ temiz ").style(Style::default().bg(bar_bg).fg(text_fg)),
+            rect,
+        );
+        geometry.buttons.push((rect, ToolbarAction::PaletteClear));
+    }
+
+    spreadsheet.toolbar_geometry = geometry;
 }
 
 fn render_formula_bar(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
@@ -727,9 +898,24 @@ fn render_grid(
         rows.push(Row::new(row_cells).height(row_height));
     }
 
+    // Widths must SUM to the available area exactly. With the clipped
+    // partial column counted in `visible_cols`, handing ratatui the full
+    // widths over-constrains the layout and it steals the deficit from an
+    // EARLIER column — which shaved one character off a mid-grid column and
+    // took its `│` separator with it. Clipping the last column ourselves
+    // keeps every other column at its exact width.
     let mut widths = vec![Constraint::Length(ROW_HEADER_WIDTH)];
+    let mut remaining = area
+        .width
+        .saturating_sub(2) // the block's own borders
+        .saturating_sub(ROW_HEADER_WIDTH);
     for col in spreadsheet.scroll_col..spreadsheet.scroll_col + visible_cols {
-        widths.push(Constraint::Length(spreadsheet.get_col_width(col)));
+        let width = spreadsheet.get_col_width(col).min(remaining);
+        if width == 0 {
+            break;
+        }
+        widths.push(Constraint::Length(width));
+        remaining -= width;
     }
 
     // The sheet name rides on the grid's own border, so a workbook costs no
@@ -1290,7 +1476,11 @@ fn render_ready_status<'a>(mode: &'a str, mode_style: Style) -> Line<'a> {
         Span::styled("f", Style::default().fg(Color::White)),
         Span::styled(" Find  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Tab", Style::default().fg(Color::White)),
+        Span::styled(" Sheet  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Shift+V", Style::default().fg(Color::White)),
         Span::styled(" Visual  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("^Z/^Y", Style::default().fg(Color::White)),
+        Span::styled(" Undo/Redo  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Shift+R", Style::default().fg(Color::White)),
         Span::styled(" Row  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Shift+C", Style::default().fg(Color::White)),

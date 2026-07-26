@@ -137,6 +137,17 @@ pub fn handle_mouse(spreadsheet: &mut Spreadsheet, event: MouseEvent) -> bool {
         return false;
     }
 
+    // The toolbar sits above the grid and owns its clicks outright — a
+    // button press must never fall through and select a cell underneath.
+    if let MouseEventKind::Down(MouseButton::Left) = event.kind {
+        if let Some(action) = spreadsheet
+            .toolbar_geometry
+            .action_at(event.column, event.row)
+        {
+            return spreadsheet.apply_toolbar_action(action);
+        }
+    }
+
     let geometry = spreadsheet.grid_geometry.clone();
     let target = hit_test(event.column, event.row, &geometry);
     let sideways = event.modifiers.contains(KeyModifiers::SHIFT);
