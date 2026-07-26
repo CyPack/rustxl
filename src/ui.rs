@@ -1,20 +1,22 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
-    Frame,
 };
 
 use crate::constants::{
-    CELL_BG, CELL_FG, CELL_NAME_BG, FORMULA_BAR_BG, FORMULA_BG, GRID_COLOR, HEADER_BG, HEADER_FG,
-    REF_RANGE_BG, REF_SELECTION_BG, SELECTED_BG, SELECTED_HEADER_BG, FIND_MATCH_BG,
-    DARK_CELL_BG, DARK_CELL_FG, DARK_CELL_NAME_BG, DARK_FORMULA_BAR_BG, DARK_FORMULA_BG,
-    DARK_GRID_COLOR, DARK_HEADER_BG, DARK_HEADER_FG, DARK_REF_RANGE_BG, DARK_REF_SELECTION_BG,
-    DARK_SELECTED_BG, DARK_SELECTED_HEADER_BG, DARK_FIND_MATCH_BG,
+    CELL_BG, CELL_FG, CELL_NAME_BG, DARK_CELL_BG, DARK_CELL_FG, DARK_CELL_NAME_BG,
+    DARK_FIND_MATCH_BG, DARK_FORMULA_BAR_BG, DARK_FORMULA_BG, DARK_GRID_COLOR, DARK_HEADER_BG,
+    DARK_HEADER_FG, DARK_REF_RANGE_BG, DARK_REF_SELECTION_BG, DARK_SELECTED_BG,
+    DARK_SELECTED_HEADER_BG, FIND_MATCH_BG, FORMULA_BAR_BG, FORMULA_BG, GRID_COLOR, HEADER_BG,
+    HEADER_FG, REF_RANGE_BG, REF_SELECTION_BG, SELECTED_BG, SELECTED_HEADER_BG,
 };
 use crate::spreadsheet::Spreadsheet;
-use crate::types::{DataType, RowColumnSelectMode, SaveFormat, TextAlignment, VerticalAlignment, VisualSubMode};
+use crate::types::{
+    DataType, RowColumnSelectMode, SaveFormat, TextAlignment, VerticalAlignment, VisualSubMode,
+};
 
 fn format_cell_by_type(value: &str, data_type: DataType) -> String {
     if value.is_empty() {
@@ -72,7 +74,8 @@ pub fn render(f: &mut Frame, spreadsheet: &mut Spreadsheet) {
     // Check if we need to show update prompt or message
     let has_update = spreadsheet.update_prompt_shown || spreadsheet.update_message.is_some();
     // Check if we need to show autocomplete suggestions
-    let has_autocomplete = spreadsheet.formula_autocomplete_active && !spreadsheet.formula_suggestions.is_empty();
+    let has_autocomplete =
+        spreadsheet.formula_autocomplete_active && !spreadsheet.formula_suggestions.is_empty();
     let autocomplete_height = if has_autocomplete {
         // Show up to 5 suggestions, plus borders
         (spreadsheet.formula_suggestions.len().min(5) + 2) as u16
@@ -113,12 +116,13 @@ pub fn render(f: &mut Frame, spreadsheet: &mut Spreadsheet) {
     };
 
     let formula_bar_area = chunks[0];
-    let (autocomplete_area, grid_area, stats_area, status_area) = match (has_stats, has_autocomplete) {
-        (true, true) => (Some(chunks[1]), chunks[2], Some(chunks[3]), chunks[4]),
-        (true, false) => (None, chunks[1], Some(chunks[2]), chunks[3]),
-        (false, true) => (Some(chunks[1]), chunks[2], None, chunks[3]),
-        (false, false) => (None, chunks[1], None, chunks[2]),
-    };
+    let (autocomplete_area, grid_area, stats_area, status_area) =
+        match (has_stats, has_autocomplete) {
+            (true, true) => (Some(chunks[1]), chunks[2], Some(chunks[3]), chunks[4]),
+            (true, false) => (None, chunks[1], Some(chunks[2]), chunks[3]),
+            (false, true) => (Some(chunks[1]), chunks[2], None, chunks[3]),
+            (false, false) => (None, chunks[1], None, chunks[2]),
+        };
 
     spreadsheet.adjust_scroll(grid_area);
 
@@ -134,7 +138,7 @@ pub fn render(f: &mut Frame, spreadsheet: &mut Spreadsheet) {
         render_stats_bar(f, spreadsheet, stats_area);
     }
     render_status_bar(f, spreadsheet, status_area);
-    
+
     // Render update prompt as floating widget in bottom right corner
     if has_update {
         render_update_bar(f, spreadsheet, area);
@@ -151,9 +155,21 @@ fn render_formula_bar(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
 
     // Choose colors based on dark mode
     let (formula_bar_bg, cell_name_bg, formula_bg, grid_color, text_fg) = if spreadsheet.dark_mode {
-        (DARK_FORMULA_BAR_BG, DARK_CELL_NAME_BG, DARK_FORMULA_BG, DARK_GRID_COLOR, DARK_CELL_FG)
+        (
+            DARK_FORMULA_BAR_BG,
+            DARK_CELL_NAME_BG,
+            DARK_FORMULA_BG,
+            DARK_GRID_COLOR,
+            DARK_CELL_FG,
+        )
     } else {
-        (FORMULA_BAR_BG, CELL_NAME_BG, FORMULA_BG, GRID_COLOR, CELL_FG)
+        (
+            FORMULA_BAR_BG,
+            CELL_NAME_BG,
+            FORMULA_BG,
+            GRID_COLOR,
+            CELL_FG,
+        )
     };
 
     let cell_name_width = 12;
@@ -188,8 +204,8 @@ fn render_formula_bar(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
     } else {
         format!(" {}", display_content)
     };
-    let formula = Paragraph::new(formula_display)
-        .style(Style::default().bg(formula_bg).fg(text_fg));
+    let formula =
+        Paragraph::new(formula_display).style(Style::default().bg(formula_bg).fg(text_fg));
     f.render_widget(formula, formula_bar_inner[2]);
 }
 
@@ -200,26 +216,30 @@ fn render_autocomplete(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
 
     // Choose colors based on dark mode
     let (bg_color, fg_color, selected_bg, grid_color) = if spreadsheet.dark_mode {
-        (DARK_FORMULA_BAR_BG, DARK_CELL_FG, DARK_SELECTED_BG, DARK_GRID_COLOR)
+        (
+            DARK_FORMULA_BAR_BG,
+            DARK_CELL_FG,
+            DARK_SELECTED_BG,
+            DARK_GRID_COLOR,
+        )
     } else {
         (FORMULA_BAR_BG, CELL_FG, SELECTED_BG, GRID_COLOR)
     };
 
     // Show up to 5 suggestions
     let max_items = spreadsheet.formula_suggestions.len().min(5);
-    let items: Vec<Line> = spreadsheet.formula_suggestions
+    let items: Vec<Line> = spreadsheet
+        .formula_suggestions
         .iter()
         .take(max_items)
         .enumerate()
         .map(|(idx, formula)| {
             let is_selected = idx == spreadsheet.formula_suggestion_index;
             let bg = if is_selected { selected_bg } else { bg_color };
-            Line::from(vec![
-                Span::styled(
-                    format!("  {}", formula),
-                    Style::default().bg(bg).fg(fg_color),
-                )
-            ])
+            Line::from(vec![Span::styled(
+                format!("  {}", formula),
+                Style::default().bg(bg).fg(fg_color),
+            )])
         })
         .collect();
 
@@ -227,7 +247,7 @@ fn render_autocomplete(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(grid_color))
         .style(Style::default().bg(bg_color));
-    
+
     let inner_area = Rect {
         x: area.x + 1,
         y: area.y + 1,
@@ -236,7 +256,7 @@ fn render_autocomplete(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
     };
 
     f.render_widget(block, area);
-    
+
     // Render each suggestion
     for (idx, line) in items.iter().enumerate() {
         let y = inner_area.y + idx as u16;
@@ -260,6 +280,54 @@ fn render_autocomplete(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
 /// the same place.
 const ROW_HEADER_WIDTH: u16 = 5;
 
+/// One grid cell as text, boxed the way a spreadsheet draws it: every line
+/// padded to the cell's inner width, a `│` on the right edge, and the bottom
+/// line underlined so adjacent cells read as boxes — without spending a
+/// single extra terminal row or column on the lines themselves.
+///
+/// The two edge colours are decided by the CALLER, because a cell alone
+/// cannot know them: the edge between two cells is strong when either
+/// neighbour's workbook style asked for a border there, and the faint
+/// default gridline otherwise — which is exactly how Excel layers authored
+/// borders over its own view gridlines.
+fn boxed_cell_text(
+    aligned: &str,
+    inner_width: usize,
+    right_color: Color,
+    bottom_color: Color,
+) -> Text<'static> {
+    let lines: Vec<&str> = aligned.split('\n').collect();
+    let last = lines.len().saturating_sub(1);
+    let mut text_lines = Vec::with_capacity(lines.len());
+    for (idx, raw) in lines.iter().enumerate() {
+        // Clip and pad to the exact inner width: the underline only paints
+        // under characters that exist, and an overlong line would push the
+        // right edge out of its own cell.
+        let mut content: String = raw.chars().take(inner_width).collect();
+        let pad = inner_width.saturating_sub(content.chars().count());
+        content.extend(std::iter::repeat(' ').take(pad));
+        let bottom = idx == last;
+        let content_style = if bottom {
+            Style::default()
+                .add_modifier(Modifier::UNDERLINED)
+                .underline_color(bottom_color)
+        } else {
+            Style::default()
+        };
+        let mut sep_style = Style::default().fg(right_color);
+        if bottom {
+            sep_style = sep_style
+                .add_modifier(Modifier::UNDERLINED)
+                .underline_color(bottom_color);
+        }
+        text_lines.push(Line::from(vec![
+            Span::styled(content, content_style),
+            Span::styled("│".to_string(), sep_style),
+        ]));
+    }
+    Text::from(text_lines)
+}
+
 fn render_grid(
     f: &mut Frame,
     spreadsheet: &mut Spreadsheet,
@@ -268,16 +336,62 @@ fn render_grid(
     visible_rows: usize,
 ) {
     // Choose colors based on dark mode
-    let (header_bg, header_fg, selected_header_bg, selected_bg, grid_color, cell_bg, cell_fg, ref_selection_bg, ref_range_bg, find_match_bg) = 
-        if spreadsheet.dark_mode {
-            (DARK_HEADER_BG, DARK_HEADER_FG, DARK_SELECTED_HEADER_BG, DARK_SELECTED_BG, 
-             DARK_GRID_COLOR, DARK_CELL_BG, DARK_CELL_FG, DARK_REF_SELECTION_BG, DARK_REF_RANGE_BG, DARK_FIND_MATCH_BG)
-        } else {
-            (HEADER_BG, HEADER_FG, SELECTED_HEADER_BG, SELECTED_BG,
-             GRID_COLOR, CELL_BG, CELL_FG, REF_SELECTION_BG, REF_RANGE_BG, FIND_MATCH_BG)
-        };
+    let (
+        header_bg,
+        header_fg,
+        selected_header_bg,
+        selected_bg,
+        grid_color,
+        cell_bg,
+        cell_fg,
+        ref_selection_bg,
+        ref_range_bg,
+        find_match_bg,
+    ) = if spreadsheet.dark_mode {
+        (
+            DARK_HEADER_BG,
+            DARK_HEADER_FG,
+            DARK_SELECTED_HEADER_BG,
+            DARK_SELECTED_BG,
+            DARK_GRID_COLOR,
+            DARK_CELL_BG,
+            DARK_CELL_FG,
+            DARK_REF_SELECTION_BG,
+            DARK_REF_RANGE_BG,
+            DARK_FIND_MATCH_BG,
+        )
+    } else {
+        (
+            HEADER_BG,
+            HEADER_FG,
+            SELECTED_HEADER_BG,
+            SELECTED_BG,
+            GRID_COLOR,
+            CELL_BG,
+            CELL_FG,
+            REF_SELECTION_BG,
+            REF_RANGE_BG,
+            FIND_MATCH_BG,
+        )
+    };
 
-    let mut header_cells = vec![Cell::from("").style(Style::default().bg(header_bg))];
+    // Excel's darker line between authored table borders and the faint view
+    // gridline everything else gets.
+    let border_strong = if spreadsheet.dark_mode {
+        crate::constants::DARK_BORDER_STRONG_COLOR
+    } else {
+        crate::constants::BORDER_STRONG_COLOR
+    };
+
+    let mut header_cells = vec![
+        Cell::from(boxed_cell_text(
+            "",
+            (ROW_HEADER_WIDTH - 1) as usize,
+            grid_color,
+            grid_color,
+        ))
+        .style(Style::default().bg(header_bg)),
+    ];
     for col in spreadsheet.scroll_col..spreadsheet.scroll_col + visible_cols {
         if col < spreadsheet.num_cols {
             let is_current_col = if spreadsheet.selecting_ref {
@@ -290,13 +404,19 @@ fn render_grid(
             } else {
                 false
             };
-            let bg = if is_current_col || is_selected_col { 
-                selected_header_bg 
-            } else { 
-                header_bg 
+            let bg = if is_current_col || is_selected_col {
+                selected_header_bg
+            } else {
+                header_bg
             };
             header_cells.push(
-                Cell::from(Spreadsheet::col_name(col)).style(
+                Cell::from(boxed_cell_text(
+                    &format!(" {}", Spreadsheet::col_name(col)),
+                    (spreadsheet.get_col_width(col) - 1) as usize,
+                    grid_color,
+                    grid_color,
+                ))
+                .style(
                     Style::default()
                         .bg(bg)
                         .fg(header_fg)
@@ -323,18 +443,38 @@ fn render_grid(
         } else {
             false
         };
-        let row_header_bg = if is_current_row || is_selected_row { 
-            selected_header_bg 
-        } else { 
-            header_bg 
+        let row_header_bg = if is_current_row || is_selected_row {
+            selected_header_bg
+        } else {
+            header_bg
         };
 
-        let mut row_cells = vec![Cell::from(format!("{}", row + 1)).style(
-            Style::default()
-                .bg(row_header_bg)
-                .fg(header_fg)
-                .add_modifier(Modifier::BOLD),
-        )];
+        // The row number strip is boxed like the cells so its gridlines join
+        // theirs; a tall row pads its number with blank lines so the right
+        // edge runs the row's full height.
+        let row_number = {
+            let inner = (ROW_HEADER_WIDTH - 1) as usize;
+            let mut text = format!("{:<inner$}", row + 1);
+            for _ in 1..spreadsheet.get_row_height(row) {
+                text.push('\n');
+                text.push_str(&" ".repeat(inner));
+            }
+            text
+        };
+        let mut row_cells = vec![
+            Cell::from(boxed_cell_text(
+                &row_number,
+                (ROW_HEADER_WIDTH - 1) as usize,
+                grid_color,
+                grid_color,
+            ))
+            .style(
+                Style::default()
+                    .bg(row_header_bg)
+                    .fg(header_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ];
 
         let ref_range = spreadsheet.get_ref_range();
         let selection_range = spreadsheet.get_selection_range();
@@ -351,7 +491,7 @@ fn render_grid(
             };
 
             let cell_style = spreadsheet.get_cell_style(row, col);
-            
+
             // Format content based on data type
             let formatted_content = if let Some(data_type) = cell_style.data_type {
                 format_cell_by_type(&evaluated, data_type)
@@ -399,14 +539,22 @@ fn render_grid(
             let row_height = spreadsheet.get_row_height(row);
 
             let is_number = Spreadsheet::is_numeric(&formatted_content);
-            // Determine alignment: use cell style if set, otherwise use data type default, 
+            // Determine alignment: use cell style if set, otherwise use data type default,
             // or fall back to number/text detection
             let alignment = cell_style.alignment.unwrap_or_else(|| {
                 if let Some(data_type) = cell_style.data_type {
                     match data_type {
                         DataType::Text => TextAlignment::Left,
-                        DataType::Number | DataType::Currency | DataType::Percentage => TextAlignment::Right,
-                        _ => if is_number { TextAlignment::Right } else { TextAlignment::Left },
+                        DataType::Number | DataType::Currency | DataType::Percentage => {
+                            TextAlignment::Right
+                        }
+                        _ => {
+                            if is_number {
+                                TextAlignment::Right
+                            } else {
+                                TextAlignment::Left
+                            }
+                        }
                     }
                 } else {
                     // No data type set, use number/text detection
@@ -417,10 +565,12 @@ fn render_grid(
                     }
                 }
             });
-            
+
             // Determine vertical alignment: use cell style if set, otherwise default to Top
-            let vertical_alignment = cell_style.vertical_alignment.unwrap_or(VerticalAlignment::Top);
-            
+            let vertical_alignment = cell_style
+                .vertical_alignment
+                .unwrap_or(VerticalAlignment::Top);
+
             let aligned_content = if !content.is_empty() {
                 let width = (col_width - 1) as usize;
                 let horizontal_line = match alignment {
@@ -429,15 +579,20 @@ fn render_grid(
                         let padding = width.saturating_sub(content.len());
                         let left_pad = padding / 2;
                         let right_pad = padding - left_pad;
-                        format!("{}{}{}", " ".repeat(left_pad), content, " ".repeat(right_pad))
+                        format!(
+                            "{}{}{}",
+                            " ".repeat(left_pad),
+                            content,
+                            " ".repeat(right_pad)
+                        )
                     }
                     TextAlignment::Right => format!("{:>width$}", content, width = width),
                 };
-                
+
                 // Apply vertical alignment by padding with empty lines
                 let empty_line = " ".repeat(width + 1); // +1 for the leading space
                 let height = row_height as usize;
-                
+
                 if height == 1 {
                     horizontal_line
                 } else {
@@ -480,7 +635,7 @@ fn render_grid(
                 // Empty content - still need to pad for vertical alignment if height > 1
                 let empty_line = " ".repeat((col_width - 1) as usize + 1);
                 let height = row_height as usize;
-                
+
                 if height == 1 {
                     format!(" {}", content)
                 } else {
@@ -497,42 +652,30 @@ fn render_grid(
 
             // Use explicit foreground color if set, otherwise default based on dark mode
             let fg_color = cell_style.fg.unwrap_or(cell_fg);
-            
+
             // Check if this cell is a find match (but not the cursor)
             let is_find_match = spreadsheet.is_find_match(row, col);
-            
+
             let mut style = if is_cursor && !spreadsheet.selecting_ref {
-                Style::default()
-                    .bg(selected_bg)
-                    .fg(fg_color)
+                Style::default().bg(selected_bg).fg(fg_color)
             } else if is_ref_cursor {
-                Style::default()
-                    .bg(ref_selection_bg)
-                    .fg(fg_color)
+                Style::default().bg(ref_selection_bg).fg(fg_color)
             } else if is_in_ref_range {
-                Style::default()
-                    .bg(ref_range_bg)
-                    .fg(fg_color)
+                Style::default().bg(ref_range_bg).fg(fg_color)
             } else if is_in_selected_row || is_in_selected_col {
                 // Highlight selected rows or columns
-                Style::default()
-                    .bg(selected_bg)
-                    .fg(fg_color)
+                Style::default().bg(selected_bg).fg(fg_color)
             } else if is_in_selection {
-                Style::default()
-                    .bg(selected_bg)
-                    .fg(fg_color)
+                Style::default().bg(selected_bg).fg(fg_color)
             } else if is_find_match {
                 // Highlight find matches with light yellow background
-                Style::default()
-                    .bg(find_match_bg)
-                    .fg(Color::Black) // Use black text for visibility on yellow
+                Style::default().bg(find_match_bg).fg(Color::Black) // Use black text for visibility on yellow
             } else {
                 Style::default()
                     .bg(cell_style.bg.unwrap_or(cell_bg))
                     .fg(fg_color)
             };
-            
+
             // Apply bold modifier from cell style
             if cell_style.bold {
                 style = style.add_modifier(Modifier::BOLD);
@@ -542,7 +685,34 @@ fn render_grid(
                 style = style.add_modifier(Modifier::BOLD);
             }
 
-            row_cells.push(Cell::from(aligned_content).style(style));
+            // An edge belongs to two cells: the line between B2 and C2 is
+            // strong when either B2's right or C2's left border was drawn in
+            // the workbook. Everything else gets the faint view gridline.
+            let right_strong = cell_style.border_right
+                || (col + 1 < spreadsheet.num_cols
+                    && spreadsheet.get_cell_style(row, col + 1).border_left);
+            let bottom_strong = cell_style.border_bottom
+                || (row + 1 < spreadsheet.num_rows
+                    && spreadsheet.get_cell_style(row + 1, col).border_top);
+            let right_color = if right_strong {
+                border_strong
+            } else {
+                grid_color
+            };
+            let bottom_color = if bottom_strong {
+                border_strong
+            } else {
+                grid_color
+            };
+            row_cells.push(
+                Cell::from(boxed_cell_text(
+                    &aligned_content,
+                    (col_width - 1) as usize,
+                    right_color,
+                    bottom_color,
+                ))
+                .style(style),
+            );
         }
         let row_height = spreadsheet.get_row_height(row);
         rows.push(Row::new(row_cells).height(row_height));
@@ -604,7 +774,10 @@ fn render_stats_bar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
         ];
 
         if numeric_count > 0 {
-            spans.push(Span::styled("  Sum: ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                "  Sum: ",
+                Style::default().fg(Color::DarkGray),
+            ));
             // Format sum nicely - remove trailing zeros for integers
             let sum_str = if sum.fract() == 0.0 {
                 format!("{:.0}", sum)
@@ -612,10 +785,13 @@ fn render_stats_bar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
                 format!("{}", sum)
             };
             spans.push(Span::styled(sum_str, Style::default().fg(Color::Cyan)));
-            
+
             // Also show average
             let avg = sum / numeric_count as f64;
-            spans.push(Span::styled("  Avg: ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                "  Avg: ",
+                Style::default().fg(Color::DarkGray),
+            ));
             let avg_str = if avg.fract() == 0.0 {
                 format!("{:.0}", avg)
             } else {
@@ -636,52 +812,72 @@ fn render_status_bar(f: &mut Frame, spreadsheet: &Spreadsheet, area: Rect) {
     let (mode, mode_style) = if spreadsheet.command_mode {
         (
             " COMMAND ",
-            Style::default().bg(Color::Rgb(138, 43, 226)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(138, 43, 226))
+                .fg(Color::White),
         )
     } else if spreadsheet.open_mode {
         (
             " OPEN ",
-            Style::default().bg(Color::Rgb(0, 100, 200)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(0, 100, 200))
+                .fg(Color::White),
         )
     } else if spreadsheet.save_mode {
         (
             " SAVE ",
-            Style::default().bg(Color::Rgb(220, 20, 60)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(220, 20, 60))
+                .fg(Color::White),
         )
     } else if spreadsheet.find_mode {
         (
             " FIND ",
-            Style::default().bg(Color::Rgb(255, 200, 0)).fg(Color::Black),
+            Style::default()
+                .bg(Color::Rgb(255, 200, 0))
+                .fg(Color::Black),
         )
     } else if spreadsheet.row_column_select_mode == RowColumnSelectMode::RowSelect {
         (
             " ROW SELECT ",
-            Style::default().bg(Color::Rgb(200, 100, 0)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(200, 100, 0))
+                .fg(Color::White),
         )
     } else if spreadsheet.row_column_select_mode == RowColumnSelectMode::ColumnSelect {
         (
             " COL SELECT ",
-            Style::default().bg(Color::Rgb(200, 100, 0)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(200, 100, 0))
+                .fg(Color::White),
         )
     } else if spreadsheet.visual_mode {
         (
             " VISUAL ",
-            Style::default().bg(Color::Rgb(255, 140, 0)).fg(Color::Black),
+            Style::default()
+                .bg(Color::Rgb(255, 140, 0))
+                .fg(Color::Black),
         )
     } else if spreadsheet.selecting_ref {
         (
             " SELECT ",
-            Style::default().bg(Color::Rgb(128, 0, 128)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(128, 0, 128))
+                .fg(Color::White),
         )
     } else if spreadsheet.editing {
         (
             " EDIT ",
-            Style::default().bg(Color::Rgb(34, 139, 34)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(34, 139, 34))
+                .fg(Color::White),
         )
     } else {
         (
             " READY ",
-            Style::default().bg(Color::Rgb(70, 130, 180)).fg(Color::White),
+            Style::default()
+                .bg(Color::Rgb(70, 130, 180))
+                .fg(Color::White),
         )
     };
 
@@ -720,7 +916,7 @@ fn render_find_status<'a>(spreadsheet: &Spreadsheet, mode: &'a str, mode_style: 
     } else {
         format!("{} matches", match_count)
     };
-    
+
     Line::from(vec![
         Span::styled(mode, mode_style),
         Span::styled("  Search: ", Style::default().fg(Color::DarkGray)),
@@ -738,7 +934,11 @@ fn render_find_status<'a>(spreadsheet: &Spreadsheet, mode: &'a str, mode_style: 
     ])
 }
 
-fn render_command_status<'a>(spreadsheet: &Spreadsheet, mode: &'a str, mode_style: Style) -> Line<'a> {
+fn render_command_status<'a>(
+    spreadsheet: &Spreadsheet,
+    mode: &'a str,
+    mode_style: Style,
+) -> Line<'a> {
     let msg = spreadsheet.command_message.as_deref().unwrap_or("");
     Line::from(vec![
         Span::styled(mode, mode_style),
@@ -838,7 +1038,11 @@ fn render_visual_status<'a>(
 ) -> Line<'a> {
     match spreadsheet.visual_sub_mode {
         VisualSubMode::Main => {
-            let mode_label = if spreadsheet.dark_mode { "Dark" } else { "Light" };
+            let mode_label = if spreadsheet.dark_mode {
+                "Dark"
+            } else {
+                "Light"
+            };
             Line::from(vec![
                 Span::styled(mode, mode_style),
                 Span::styled("  f", Style::default().fg(Color::White)),
@@ -860,7 +1064,10 @@ fn render_visual_status<'a>(
                 Span::styled("c", Style::default().fg(Color::White)),
                 Span::styled(" Clear  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("m", Style::default().fg(Color::White)),
-                Span::styled(format!(" {} ", mode_label), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!(" {} ", mode_label),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled("Esc", Style::default().fg(Color::White)),
                 Span::styled(" Exit", Style::default().fg(Color::DarkGray)),
             ])
@@ -896,7 +1103,10 @@ fn render_visual_status<'a>(
             Span::styled("←→", Style::default().fg(Color::White)),
             Span::styled(" Adjust  ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("Current: {} ", spreadsheet.get_col_width(spreadsheet.cursor_col)),
+                format!(
+                    "Current: {} ",
+                    spreadsheet.get_col_width(spreadsheet.cursor_col)
+                ),
                 Style::default().fg(Color::White),
             ),
             Span::styled("Esc", Style::default().fg(Color::White)),
@@ -908,7 +1118,10 @@ fn render_visual_status<'a>(
             Span::styled("↑↓", Style::default().fg(Color::White)),
             Span::styled(" Adjust  ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("Current: {} ", spreadsheet.get_row_height(spreadsheet.cursor_row)),
+                format!(
+                    "Current: {} ",
+                    spreadsheet.get_row_height(spreadsheet.cursor_row)
+                ),
                 Style::default().fg(Color::White),
             ),
             Span::styled("Esc", Style::default().fg(Color::White)),
@@ -930,7 +1143,10 @@ fn render_visual_status<'a>(
         ]),
         VisualSubMode::VerticalAlignment => Line::from(vec![
             Span::styled(mode, mode_style),
-            Span::styled("  Vertical Alignment: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "  Vertical Alignment: ",
+                Style::default().fg(Color::DarkGray),
+            ),
             Span::styled("1", Style::default().fg(Color::White)),
             Span::styled("-Top ", Style::default().fg(Color::DarkGray)),
             Span::styled("2", Style::default().fg(Color::White)),
@@ -1004,7 +1220,10 @@ fn render_row_select_status<'a>(
     };
     Line::from(vec![
         Span::styled(mode, mode_style),
-        Span::styled(format!("  {}  ", row_info), Style::default().fg(Color::White)),
+        Span::styled(
+            format!("  {}  ", row_info),
+            Style::default().fg(Color::White),
+        ),
         Span::styled("↑↓", Style::default().fg(Color::White)),
         Span::styled(" Select  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Shift+↑↓", Style::default().fg(Color::White)),
@@ -1036,7 +1255,10 @@ fn render_column_select_status<'a>(
     };
     Line::from(vec![
         Span::styled(mode, mode_style),
-        Span::styled(format!("  {}  ", col_info), Style::default().fg(Color::White)),
+        Span::styled(
+            format!("  {}  ", col_info),
+            Style::default().fg(Color::White),
+        ),
         Span::styled("←→", Style::default().fg(Color::White)),
         Span::styled(" Select  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Shift+←→", Style::default().fg(Color::White)),
@@ -1080,7 +1302,9 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
         Text::from(Line::from(vec![
             Span::styled(
                 " UPDATE ",
-                Style::default().bg(Color::Rgb(0, 150, 136)).fg(Color::White),
+                Style::default()
+                    .bg(Color::Rgb(0, 150, 136))
+                    .fg(Color::White),
             ),
             Span::styled(
                 "  Downloading update...",
@@ -1093,15 +1317,13 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
         Text::from(Line::from(vec![
             Span::styled(
                 " UPDATE ",
-                Style::default().bg(Color::Rgb(0, 150, 136)).fg(Color::White),
+                Style::default()
+                    .bg(Color::Rgb(0, 150, 136))
+                    .fg(Color::White),
             ),
             Span::styled(
                 format!("  {}", msg),
-                Style::default().fg(if is_success {
-                    Color::Green
-                } else {
-                    Color::Red
-                }),
+                Style::default().fg(if is_success { Color::Green } else { Color::Red }),
             ),
         ]))
     } else if spreadsheet.update_prompt_shown {
@@ -1109,7 +1331,9 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
             Text::from(Line::from(vec![
                 Span::styled(
                     " UPDATE ",
-                    Style::default().bg(Color::Rgb(0, 150, 136)).fg(Color::White),
+                    Style::default()
+                        .bg(Color::Rgb(0, 150, 136))
+                        .fg(Color::White),
                 ),
                 Span::styled(
                     format!(
@@ -1138,14 +1362,17 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
     let update_width = max_width.min(terminal_area.width);
     // Allow up to 4 lines of wrapped text (enough for the prompt with all options)
     let update_height = 6.min(terminal_area.height.saturating_sub(2)); // 4 lines + 2 for borders
-    
+
     // Position in bottom right corner, above the status bar
     // Status bar is 1 line at the bottom, so position update bar above it
     let padding = 1;
     let status_bar_height = 1;
     let update_x = terminal_area.x + terminal_area.width.saturating_sub(update_width + padding);
-    let update_y = terminal_area.y + terminal_area.height.saturating_sub(update_height + status_bar_height + padding);
-    
+    let update_y = terminal_area.y
+        + terminal_area
+            .height
+            .saturating_sub(update_height + status_bar_height + padding);
+
     let update_area = Rect {
         x: update_x,
         y: update_y,
@@ -1157,9 +1384,9 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Rgb(0, 150, 136)))
         .style(Style::default().bg(Color::Rgb(35, 45, 45)));
-    
+
     f.render_widget(block, update_area);
-    
+
     // Render the text inside the block with wrapping
     let inner_area = Rect {
         x: update_area.x + 1,
@@ -1167,7 +1394,7 @@ fn render_update_bar(f: &mut Frame, spreadsheet: &Spreadsheet, terminal_area: Re
         width: update_area.width.saturating_sub(2),
         height: update_area.height.saturating_sub(2),
     };
-    
+
     f.render_widget(
         Paragraph::new(text)
             .wrap(Wrap { trim: true })

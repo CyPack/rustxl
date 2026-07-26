@@ -5,13 +5,15 @@ use std::time::Duration;
 use crossterm::event::{
     self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::constants::COLOR_PALETTE;
-use crate::hit_test::{hit_test, HitTarget};
+use crate::hit_test::{HitTarget, hit_test};
 use crate::settings;
 use crate::spreadsheet::Spreadsheet;
-use crate::types::{DataType, RowColumnSelectMode, SaveFormat, TextAlignment, VerticalAlignment, VisualSubMode};
+use crate::types::{
+    DataType, RowColumnSelectMode, SaveFormat, TextAlignment, VerticalAlignment, VisualSubMode,
+};
 use crate::ui;
 use crate::update::{self, UpdateMessage};
 
@@ -20,7 +22,6 @@ pub fn run_app(
     mut spreadsheet: Spreadsheet,
     update_rx: Receiver<UpdateMessage>,
 ) -> io::Result<()> {
-
     loop {
         // Check for update messages (non-blocking)
         if let Ok(msg) = update_rx.try_recv() {
@@ -252,13 +253,18 @@ fn handle_ref_selection_mode(spreadsheet: &mut Spreadsheet, code: KeyCode, shift
 fn handle_normal_editing(spreadsheet: &mut Spreadsheet, code: KeyCode) {
     match code {
         KeyCode::Enter => {
-            if spreadsheet.formula_autocomplete_active && !spreadsheet.formula_suggestions.is_empty() {
+            if spreadsheet.formula_autocomplete_active
+                && !spreadsheet.formula_suggestions.is_empty()
+            {
                 // Select the current suggestion
-                let selected = &spreadsheet.formula_suggestions[spreadsheet.formula_suggestion_index];
+                let selected =
+                    &spreadsheet.formula_suggestions[spreadsheet.formula_suggestion_index];
                 // Replace the prefix in edit_buffer with the full formula name
                 let prefix_start = spreadsheet.edit_buffer.find('=').unwrap_or(0) + 1;
                 let prefix_end = prefix_start + spreadsheet.formula_prefix.len();
-                spreadsheet.edit_buffer.replace_range(prefix_start..prefix_end, selected);
+                spreadsheet
+                    .edit_buffer
+                    .replace_range(prefix_start..prefix_end, selected);
                 spreadsheet.edit_buffer.push('(');
                 spreadsheet.formula_autocomplete_active = false;
                 spreadsheet.formula_suggestions.clear();
@@ -269,21 +275,27 @@ fn handle_normal_editing(spreadsheet: &mut Spreadsheet, code: KeyCode) {
             }
         }
         KeyCode::Up => {
-            if spreadsheet.formula_autocomplete_active && !spreadsheet.formula_suggestions.is_empty() {
+            if spreadsheet.formula_autocomplete_active
+                && !spreadsheet.formula_suggestions.is_empty()
+            {
                 // Navigate up in suggestions
                 if spreadsheet.formula_suggestion_index > 0 {
                     spreadsheet.formula_suggestion_index -= 1;
                 } else {
-                    spreadsheet.formula_suggestion_index = spreadsheet.formula_suggestions.len() - 1;
+                    spreadsheet.formula_suggestion_index =
+                        spreadsheet.formula_suggestions.len() - 1;
                 }
             } else {
                 spreadsheet.finish_editing_with_move(-1, 0);
             }
         }
         KeyCode::Down => {
-            if spreadsheet.formula_autocomplete_active && !spreadsheet.formula_suggestions.is_empty() {
+            if spreadsheet.formula_autocomplete_active
+                && !spreadsheet.formula_suggestions.is_empty()
+            {
                 // Navigate down in suggestions
-                spreadsheet.formula_suggestion_index = (spreadsheet.formula_suggestion_index + 1) % spreadsheet.formula_suggestions.len();
+                spreadsheet.formula_suggestion_index = (spreadsheet.formula_suggestion_index + 1)
+                    % spreadsheet.formula_suggestions.len();
             } else {
                 spreadsheet.finish_editing_with_move(1, 0);
             }
@@ -318,12 +330,17 @@ fn handle_normal_editing(spreadsheet: &mut Spreadsheet, code: KeyCode) {
             spreadsheet.handle_char_input(c);
         }
         KeyCode::Tab => {
-            if spreadsheet.formula_autocomplete_active && !spreadsheet.formula_suggestions.is_empty() {
+            if spreadsheet.formula_autocomplete_active
+                && !spreadsheet.formula_suggestions.is_empty()
+            {
                 // Select the current suggestion (same as Enter)
-                let selected = &spreadsheet.formula_suggestions[spreadsheet.formula_suggestion_index];
+                let selected =
+                    &spreadsheet.formula_suggestions[spreadsheet.formula_suggestion_index];
                 let prefix_start = spreadsheet.edit_buffer.find('=').unwrap_or(0) + 1;
                 let prefix_end = prefix_start + spreadsheet.formula_prefix.len();
-                spreadsheet.edit_buffer.replace_range(prefix_start..prefix_end, selected);
+                spreadsheet
+                    .edit_buffer
+                    .replace_range(prefix_start..prefix_end, selected);
                 spreadsheet.edit_buffer.push('(');
                 spreadsheet.formula_autocomplete_active = false;
                 spreadsheet.formula_suggestions.clear();
@@ -339,7 +356,15 @@ fn handle_normal_editing(spreadsheet: &mut Spreadsheet, code: KeyCode) {
 
 fn handle_open_mode(spreadsheet: &mut Spreadsheet, code: KeyCode) -> bool {
     match code {
-        KeyCode::Char(c) if c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' || c == '~' || c == ' ' => {
+        KeyCode::Char(c)
+            if c.is_alphanumeric()
+                || c == '_'
+                || c == '-'
+                || c == '/'
+                || c == '.'
+                || c == '~'
+                || c == ' ' =>
+        {
             spreadsheet.open_filename.push(c);
             spreadsheet.open_message = None;
         }
@@ -438,7 +463,9 @@ fn handle_visual_main(spreadsheet: &mut Spreadsheet, code: KeyCode) {
         KeyCode::Char('m') | KeyCode::Char('M') => {
             spreadsheet.toggle_dark_mode();
         }
-        KeyCode::Esc | KeyCode::Tab => spreadsheet.exit_visual_mode(),
+        // Shift+V toggles back out, matching how it came in; Tab now belongs
+        // to sheet switching and must not silently drop the visual state.
+        KeyCode::Esc | KeyCode::Char('V') => spreadsheet.exit_visual_mode(),
         _ => {}
     }
 }
@@ -616,10 +643,11 @@ fn handle_ready_mode(
     modifiers: KeyModifiers,
 ) -> bool {
     let shift = modifiers.contains(KeyModifiers::SHIFT);
-    let ctrl_or_cmd = modifiers.contains(KeyModifiers::CONTROL) || modifiers.contains(KeyModifiers::SUPER);
+    let ctrl_or_cmd =
+        modifiers.contains(KeyModifiers::CONTROL) || modifiers.contains(KeyModifiers::SUPER);
     let cmd = modifiers.contains(KeyModifiers::SUPER);
     let alt = modifiers.contains(KeyModifiers::ALT);
-    
+
     match code {
         // Copy (Ctrl+C / Cmd+C)
         KeyCode::Char('c') if ctrl_or_cmd => {
@@ -653,7 +681,7 @@ fn handle_ready_mode(
         }
         // Workaround for macOS: Cmd+Arrow sends special characters via terminal
         // Cmd+Right sends End (0x05 = Ctrl+E in Emacs)
-        // Cmd+Left sends Home (0x01 = Ctrl+A in Emacs)  
+        // Cmd+Left sends Home (0x01 = Ctrl+A in Emacs)
         // Cmd+Down sends End of buffer (Ctrl+N or similar)
         // Cmd+Up sends Beginning of buffer (Ctrl+P or similar)
         KeyCode::End => {
@@ -702,19 +730,23 @@ fn handle_ready_mode(
             return false;
         }
         // Also handle raw control characters that terminals may send
-        KeyCode::Char('\x05') => { // Ctrl+E / End of line
+        KeyCode::Char('\x05') => {
+            // Ctrl+E / End of line
             spreadsheet.jump_to_last_col();
             return false;
         }
-        KeyCode::Char('\x01') => { // Ctrl+A / Beginning of line
+        KeyCode::Char('\x01') => {
+            // Ctrl+A / Beginning of line
             spreadsheet.jump_to_first_col();
             return false;
         }
-        KeyCode::Char('\x0E') => { // Ctrl+N / Next line
+        KeyCode::Char('\x0E') => {
+            // Ctrl+N / Next line
             spreadsheet.jump_to_last_row();
             return false;
         }
-        KeyCode::Char('\x10') => { // Ctrl+P / Previous line
+        KeyCode::Char('\x10') => {
+            // Ctrl+P / Previous line
             spreadsheet.jump_to_first_row();
             return false;
         }
@@ -738,7 +770,16 @@ fn handle_ready_mode(
             spreadsheet.start_editing();
         }
         KeyCode::Delete | KeyCode::Backspace => spreadsheet.delete_cell(),
-        KeyCode::Tab => spreadsheet.enter_visual_mode(),
+        // Tab walks the workbook's sheets, the way browser tabs walk pages;
+        // Shift+Tab walks back. Visual mode moved to Shift+V so the two do
+        // not fight over the key.
+        KeyCode::Tab => {
+            spreadsheet.next_sheet();
+        }
+        KeyCode::BackTab => {
+            spreadsheet.previous_sheet();
+        }
+        KeyCode::Char('V') if shift => spreadsheet.enter_visual_mode(),
         // Enter command mode with colon (vim-style)
         KeyCode::Char(':') => {
             spreadsheet.enter_command_mode();
@@ -773,10 +814,8 @@ fn handle_row_column_select_mode(
                         } else if spreadsheet.cursor_row > 0 {
                             // Extend selection up
                             spreadsheet.cursor_row -= 1;
-                            spreadsheet.selected_rows = Some((
-                                spreadsheet.cursor_row.min(min_row),
-                                max_row,
-                            ));
+                            spreadsheet.selected_rows =
+                                Some((spreadsheet.cursor_row.min(min_row), max_row));
                         }
                     }
                 }
@@ -791,10 +830,8 @@ fn handle_row_column_select_mode(
                         } else if spreadsheet.cursor_row < spreadsheet.num_rows - 1 {
                             // Extend selection down
                             spreadsheet.cursor_row += 1;
-                            spreadsheet.selected_rows = Some((
-                                min_row,
-                                spreadsheet.cursor_row.max(max_row),
-                            ));
+                            spreadsheet.selected_rows =
+                                Some((min_row, spreadsheet.cursor_row.max(max_row)));
                         }
                     }
                 }
@@ -823,10 +860,8 @@ fn handle_row_column_select_mode(
                         } else if spreadsheet.cursor_col > 0 {
                             // Extend selection left
                             spreadsheet.cursor_col -= 1;
-                            spreadsheet.selected_cols = Some((
-                                spreadsheet.cursor_col.min(min_col),
-                                max_col,
-                            ));
+                            spreadsheet.selected_cols =
+                                Some((spreadsheet.cursor_col.min(min_col), max_col));
                         }
                     }
                 }
@@ -841,10 +876,8 @@ fn handle_row_column_select_mode(
                         } else if spreadsheet.cursor_col < spreadsheet.num_cols - 1 {
                             // Extend selection right
                             spreadsheet.cursor_col += 1;
-                            spreadsheet.selected_cols = Some((
-                                min_col,
-                                spreadsheet.cursor_col.max(max_col),
-                            ));
+                            spreadsheet.selected_cols =
+                                Some((min_col, spreadsheet.cursor_col.max(max_col)));
                         }
                     }
                 }
@@ -865,8 +898,9 @@ fn handle_row_column_select_mode(
 }
 
 fn handle_find_mode(spreadsheet: &mut Spreadsheet, code: KeyCode, modifiers: KeyModifiers) {
-    let ctrl_or_cmd = modifiers.contains(KeyModifiers::CONTROL) || modifiers.contains(KeyModifiers::SUPER);
-    
+    let ctrl_or_cmd =
+        modifiers.contains(KeyModifiers::CONTROL) || modifiers.contains(KeyModifiers::SUPER);
+
     match code {
         // Copy (Ctrl+C / Cmd+C)
         KeyCode::Char('c') if ctrl_or_cmd => {
@@ -969,8 +1003,16 @@ mod tests {
     #[test]
     fn test_ready_mode_quit() {
         let mut sheet = Spreadsheet::new();
-        assert!(handle_ready_mode(&mut sheet, KeyCode::Char('q'), KeyModifiers::empty()));
-        assert!(handle_ready_mode(&mut sheet, KeyCode::Char('Q'), KeyModifiers::empty()));
+        assert!(handle_ready_mode(
+            &mut sheet,
+            KeyCode::Char('q'),
+            KeyModifiers::empty()
+        ));
+        assert!(handle_ready_mode(
+            &mut sheet,
+            KeyCode::Char('Q'),
+            KeyModifiers::empty()
+        ));
     }
 
     #[test]
@@ -1033,7 +1075,11 @@ mod sheet_navigation_keys {
         sheet.cursor_row = 10;
 
         handle_ready_mode(&mut sheet, KeyCode::PageDown, KeyModifiers::empty());
-        assert_eq!(sheet.active_sheet_name(), "Alpha", "still on the same sheet");
+        assert_eq!(
+            sheet.active_sheet_name(),
+            "Alpha",
+            "still on the same sheet"
+        );
         assert_eq!(sheet.cursor_row, 20, "moved to the last populated row");
 
         handle_ready_mode(&mut sheet, KeyCode::PageUp, KeyModifiers::empty());
@@ -1056,15 +1102,22 @@ mod sheet_navigation_keys {
         assert!(sheet.editing, "a letter begins a cell edit");
     }
 
-    /// Tab keeps opening Visual mode, which is why it is not the sheet key.
+    /// Tab walks the sheets and Shift+Tab walks them back; Visual mode moved
+    /// to Shift+V. (The old contract — Tab opening Visual mode — was retired
+    /// on request: switching pages is the far more frequent gesture.)
     #[test]
-    fn tab_still_opens_visual_mode() {
+    fn tab_walks_sheets_and_shift_v_opens_visual_mode() {
         let mut sheet = workbook();
 
         handle_ready_mode(&mut sheet, KeyCode::Tab, KeyModifiers::empty());
+        assert!(!sheet.visual_mode, "tab must not open visual mode any more");
+        assert_eq!(sheet.active_sheet_name(), "Beta");
 
-        assert!(sheet.visual_mode);
+        handle_ready_mode(&mut sheet, KeyCode::BackTab, KeyModifiers::SHIFT);
         assert_eq!(sheet.active_sheet_name(), "Alpha");
+
+        handle_ready_mode(&mut sheet, KeyCode::Char('V'), KeyModifiers::SHIFT);
+        assert!(sheet.visual_mode, "shift+v is the visual mode key now");
     }
 }
 
@@ -1165,7 +1218,10 @@ mod mouse_input {
         assert!(handle_mouse(&mut sheet, click(16, 1)));
 
         assert_eq!(sheet.selected_cols, Some((1, 1)));
-        assert_eq!(sheet.row_column_select_mode, RowColumnSelectMode::ColumnSelect);
+        assert_eq!(
+            sheet.row_column_select_mode,
+            RowColumnSelectMode::ColumnSelect
+        );
     }
 
     #[test]
@@ -1199,7 +1255,10 @@ mod mouse_input {
         let mut sheet = sheet();
         let (row, col) = (sheet.cursor_row, sheet.cursor_col);
 
-        assert!(handle_mouse(&mut sheet, at(MouseEventKind::ScrollDown, 10, 5)));
+        assert!(handle_mouse(
+            &mut sheet,
+            at(MouseEventKind::ScrollDown, 10, 5)
+        ));
         assert_eq!(sheet.scroll_row, 3);
         assert_eq!(sheet.cursor_row, row + 3, "the cursor followed the view");
         assert_eq!(sheet.cursor_col, col, "and nothing moved sideways");
@@ -1343,7 +1402,10 @@ mod mouse_input {
     fn the_wheel_cannot_scroll_past_the_start_of_the_sheet() {
         let mut sheet = sheet();
 
-        assert!(!handle_mouse(&mut sheet, at(MouseEventKind::ScrollUp, 10, 5)));
+        assert!(!handle_mouse(
+            &mut sheet,
+            at(MouseEventKind::ScrollUp, 10, 5)
+        ));
 
         assert_eq!(sheet.scroll_row, 0);
     }
@@ -1353,7 +1415,10 @@ mod mouse_input {
         let mut sheet = sheet();
         sheet.scroll_row = sheet.num_rows - 1;
 
-        assert!(!handle_mouse(&mut sheet, at(MouseEventKind::ScrollDown, 10, 5)));
+        assert!(!handle_mouse(
+            &mut sheet,
+            at(MouseEventKind::ScrollDown, 10, 5)
+        ));
 
         assert_eq!(sheet.scroll_row, sheet.num_rows - 1);
     }

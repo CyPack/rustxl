@@ -32,6 +32,10 @@ pub const SELECTED_BG: Color = Color::Rgb(180, 198, 231);
 pub const SELECTED_HEADER_BG: Color = Color::Rgb(142, 169, 219);
 pub const FORMULA_BAR_BG: Color = Color::Rgb(240, 240, 240);
 pub const GRID_COLOR: Color = Color::Rgb(200, 200, 200);
+/// A border the WORKBOOK drew (table outlines in a form). Darker than the
+/// default gridline so authored table lines read as structure, the way
+/// Excel's own borders sit on top of its faint view gridlines.
+pub const BORDER_STRONG_COLOR: Color = Color::Rgb(90, 90, 90);
 pub const CELL_NAME_BG: Color = Color::Rgb(200, 200, 200);
 pub const FORMULA_BG: Color = Color::White;
 pub const REF_SELECTION_BG: Color = Color::Rgb(198, 224, 180);
@@ -46,6 +50,7 @@ pub const DARK_SELECTED_BG: Color = Color::Rgb(60, 80, 120);
 pub const DARK_SELECTED_HEADER_BG: Color = Color::Rgb(70, 100, 150);
 pub const DARK_FORMULA_BAR_BG: Color = Color::Rgb(40, 40, 40);
 pub const DARK_GRID_COLOR: Color = Color::Rgb(80, 80, 80);
+pub const DARK_BORDER_STRONG_COLOR: Color = Color::Rgb(190, 190, 190);
 pub const DARK_CELL_NAME_BG: Color = Color::Rgb(60, 60, 60);
 pub const DARK_FORMULA_BG: Color = Color::Rgb(30, 30, 30);
 pub const DARK_REF_SELECTION_BG: Color = Color::Rgb(60, 100, 60);
@@ -54,5 +59,5 @@ pub const DARK_CELL_BG: Color = Color::Rgb(25, 25, 25);
 pub const DARK_CELL_FG: Color = Color::Rgb(220, 220, 220);
 
 // Find mode highlight colors
-pub const FIND_MATCH_BG: Color = Color::Rgb(255, 255, 180);  // Light yellow
-pub const DARK_FIND_MATCH_BG: Color = Color::Rgb(120, 120, 60);  // Darker yellow for dark mode
+pub const FIND_MATCH_BG: Color = Color::Rgb(255, 255, 180); // Light yellow
+pub const DARK_FIND_MATCH_BG: Color = Color::Rgb(120, 120, 60); // Darker yellow for dark mode

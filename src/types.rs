@@ -35,6 +35,15 @@ pub struct CellStyle {
     pub alignment: Option<TextAlignment>,
     pub vertical_alignment: Option<VerticalAlignment>,
     pub data_type: Option<DataType>,
+    /// Borders the workbook draws around this cell. A form's table outline is
+    /// authored as borders, not colours, and reading only the fills left every
+    /// table in a Hasrapport looking like loose text. These say which sides
+    /// the FILE asked for; the renderer paints them strong, and everything
+    /// else gets the faint default gridline a spreadsheet shows anyway.
+    pub border_left: bool,
+    pub border_right: bool,
+    pub border_top: bool,
+    pub border_bottom: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]

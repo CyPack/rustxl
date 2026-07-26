@@ -29,8 +29,14 @@ pub fn cell_style_from(style: &Style) -> Option<CellStyle> {
     let fg = font.and_then(|font| color_from_argb(font.get_color().argb()));
     let bold = font.is_some_and(|font| font.get_bold());
     let (alignment, vertical_alignment) = alignments_from(style);
+    let (border_left, border_right, border_top, border_bottom) = borders_from(style);
 
-    if bg.is_none() && fg.is_none() && !bold && alignment.is_none() && vertical_alignment.is_none()
+    if bg.is_none()
+        && fg.is_none()
+        && !bold
+        && alignment.is_none()
+        && vertical_alignment.is_none()
+        && !(border_left || border_right || border_top || border_bottom)
     {
         return None;
     }
@@ -41,7 +47,29 @@ pub fn cell_style_from(style: &Style) -> Option<CellStyle> {
         alignment,
         vertical_alignment,
         data_type: None,
+        border_left,
+        border_right,
+        border_top,
+        border_bottom,
     })
+}
+
+/// Which sides the workbook draws a border on. Any style other than "none"
+/// counts — the grid has one line weight, so thin, medium and double all
+/// collapse onto it; what matters is WHERE the file drew table lines.
+fn borders_from(style: &Style) -> (bool, bool, bool, bool) {
+    let Some(borders) = style.get_borders() else {
+        return (false, false, false, false);
+    };
+    let drawn = |border: &umya_spreadsheet::Border| {
+        border.get_border_style() != umya_spreadsheet::Border::BORDER_NONE
+    };
+    (
+        drawn(borders.get_left()),
+        drawn(borders.get_right()),
+        drawn(borders.get_top()),
+        drawn(borders.get_bottom()),
+    )
 }
 
 /// The visible background of a solid pattern fill.
@@ -171,6 +199,20 @@ mod tests {
         let cell = cell_style_from(&style).expect("alignment is a style");
         assert_eq!(cell.alignment, Some(TextAlignment::Center));
         assert_eq!(cell.vertical_alignment, Some(VerticalAlignment::Center));
+    }
+
+    #[test]
+    fn workbook_borders_are_carried_per_side() {
+        use umya_spreadsheet::BorderStyleValues;
+        let mut style = Style::default();
+        let borders = style.get_borders_mut();
+        borders.get_bottom_mut().set_style(BorderStyleValues::Thin);
+        borders.get_right_mut().set_style(BorderStyleValues::Medium);
+        let cell = cell_style_from(&style).expect("a bordered cell is a style");
+        assert!(cell.border_bottom);
+        assert!(cell.border_right);
+        assert!(!cell.border_left);
+        assert!(!cell.border_top);
     }
 
     #[test]
