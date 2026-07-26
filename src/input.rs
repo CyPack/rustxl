@@ -40,6 +40,8 @@ pub fn run_app(
             }
         }
 
+        spreadsheet.autosave_if_due();
+
         terminal.draw(|f| ui::render(f, &mut spreadsheet))?;
 
         // Use poll with timeout to allow checking update messages periodically
@@ -748,6 +750,14 @@ fn handle_ready_mode(
         KeyCode::Char('\x10') => {
             // Ctrl+P / Previous line
             spreadsheet.jump_to_first_row();
+            return false;
+        }
+        KeyCode::Char('z') if ctrl_or_cmd => {
+            spreadsheet.undo();
+            return false;
+        }
+        KeyCode::Char('y') if ctrl_or_cmd => {
+            spreadsheet.redo();
             return false;
         }
         KeyCode::Char('q') | KeyCode::Char('Q') => return true,

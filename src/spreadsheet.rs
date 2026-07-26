@@ -115,6 +115,19 @@ pub struct Spreadsheet {
     /// time, so what is written is the file the user has been looking at — not
     /// whatever the path happens to point at minutes later.
     pub source: Option<umya_spreadsheet::Workbook>,
+    /// Undo/redo history for the workbook - see the `undo` module.
+    pub undo_stack: crate::undo::UndoStack,
+    /// When the first unsaved change landed. `None` means clean. The main
+    /// loop's tick turns this into an automatic save once it is old enough.
+    pub dirty_since: Option<std::time::Instant>,
+    /// The TSV this grid last wrote to the system clipboard. Paste compares
+    /// it against the live system clipboard to decide whether the internal
+    /// (style-carrying) copy is still the newest thing the user copied.
+    pub last_copied_text: Option<String>,
+    /// The .xlsx file this grid was opened from, when it was one. Autosave
+    /// only ever writes back to the file the user opened - a CSV or piped
+    /// grid keeps the explicit save dialog as its only exit.
+    pub opened_xlsx: Option<std::path::PathBuf>,
 }
 
 impl Spreadsheet {
@@ -174,6 +187,10 @@ impl Spreadsheet {
             active_sheet: 0,
             grid_geometry: GridGeometry::default(),
             source: None,
+            undo_stack: crate::undo::UndoStack::default(),
+            last_copied_text: None,
+            dirty_since: None,
+            opened_xlsx: None,
         }
     }
 
@@ -566,6 +583,9 @@ impl Spreadsheet {
     }
 
     fn copy_or_cut_selection(&mut self, is_cut: bool) {
+        if is_cut {
+            self.record_undo();
+        }
         // Determine the range to copy
         let (min_row, min_col, max_row, max_col) =
             if let Some(((r1, c1), (r2, c2))) = self.get_selection_range() {
@@ -617,6 +637,7 @@ impl Spreadsheet {
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
             let _ = clipboard.set_text(&clipboard_text);
         }
+        self.last_copied_text = Some(clipboard_text);
 
         // Store internal clipboard data
         self.clipboard_data = Some(ClipboardData {
@@ -630,23 +651,42 @@ impl Spreadsheet {
         });
     }
 
-    /// Paste from clipboard at current cursor position
+    /// Paste from clipboard at current cursor position.
+    ///
+    /// The system clipboard is the referee: copying here writes TSV into it,
+    /// so as long as it still matches, the richer internal clipboard (with
+    /// styles) wins. The moment the system clipboard says something ELSE -
+    /// the user copied in Sheets, Excel, a browser - the internal copy is
+    /// stale and pasting it would silently overwrite what they just copied.
     pub fn paste(&mut self) {
-        // First, try to use internal clipboard data if available
-        if let Some(clipboard_data) = self.clipboard_data.take() {
-            self.paste_internal(clipboard_data);
-            return;
-        }
+        let system_text = arboard::Clipboard::new()
+            .ok()
+            .and_then(|mut clipboard| clipboard.get_text().ok());
 
-        // Fall back to system clipboard
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            if let Ok(text) = clipboard.get_text() {
-                self.paste_text(&text);
+        let internal_is_current = match (&self.clipboard_data, &system_text) {
+            (Some(_), Some(text)) => self
+                .last_copied_text
+                .as_deref()
+                .is_some_and(|copied| copied == text),
+            // No system clipboard to compare against - trust the internal one.
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+
+        if internal_is_current {
+            if let Some(clipboard_data) = self.clipboard_data.take() {
+                self.paste_internal(clipboard_data);
+                return;
             }
+        }
+        if let Some(text) = system_text {
+            self.paste_text(&text);
         }
     }
 
     fn paste_internal(&mut self, clipboard_data: ClipboardData) {
+        self.record_undo();
+        self.mark_dirty();
         let dest_row = self.cursor_row;
         let dest_col = self.cursor_col;
 
@@ -697,6 +737,8 @@ impl Spreadsheet {
     }
 
     fn paste_text(&mut self, text: &str) {
+        self.record_undo();
+        self.mark_dirty();
         let dest_row = self.cursor_row;
         let dest_col = self.cursor_col;
 
@@ -759,7 +801,15 @@ impl Spreadsheet {
             .unwrap_or("")
     }
 
+    /// Note the first unsaved change; the autosave tick clears it.
+    pub fn mark_dirty(&mut self) {
+        if self.dirty_since.is_none() {
+            self.dirty_since = Some(std::time::Instant::now());
+        }
+    }
+
     pub fn set_cell(&mut self, row: usize, col: usize, value: String) {
+        self.mark_dirty();
         // Writing to a cell replaces whatever was behind it. A formula the
         // workbook carried is no longer what this cell holds, and keeping the
         // text would resurrect it the next time the file is written.
@@ -993,6 +1043,7 @@ impl Spreadsheet {
     }
 
     pub fn finish_editing_with_move(&mut self, dr: isize, dc: isize) {
+        self.record_undo();
         if self.formula_mode {
             let open_parens = self.edit_buffer.chars().filter(|&c| c == '(').count();
             let close_parens = self.edit_buffer.chars().filter(|&c| c == ')').count();
@@ -1029,6 +1080,8 @@ impl Spreadsheet {
     }
 
     pub fn delete_cell(&mut self) {
+        self.record_undo();
+        self.mark_dirty();
         if let Some(((min_row, min_col), (max_row, max_col))) = self.get_selection_range() {
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
@@ -1253,6 +1306,8 @@ impl Spreadsheet {
     }
 
     pub fn delete_selected_rows(&mut self) {
+        self.record_undo();
+        self.mark_dirty();
         if let Some((min_row, max_row)) = self.selected_rows {
             // Delete rows from bottom to top to avoid index shifting issues
             for row in (min_row..=max_row).rev() {
@@ -1271,6 +1326,8 @@ impl Spreadsheet {
     }
 
     pub fn delete_selected_columns(&mut self) {
+        self.record_undo();
+        self.mark_dirty();
         if let Some((min_col, max_col)) = self.selected_cols {
             // Delete columns from right to left to avoid index shifting issues
             for col in (min_col..=max_col).rev() {
@@ -1289,6 +1346,8 @@ impl Spreadsheet {
     }
 
     pub fn insert_rows_after_selected(&mut self) {
+        self.record_undo();
+        self.mark_dirty();
         if let Some((min_row, max_row)) = self.selected_rows {
             let count = max_row - min_row + 1;
             // Insert after the last selected row
@@ -1303,6 +1362,8 @@ impl Spreadsheet {
     }
 
     pub fn insert_columns_after_selected(&mut self) {
+        self.record_undo();
+        self.mark_dirty();
         if let Some((min_col, max_col)) = self.selected_cols {
             let count = max_col - min_col + 1;
             // Insert after the last selected column
@@ -1545,6 +1606,7 @@ impl Spreadsheet {
         // before this one.
         self.formulas.clear();
         self.source = None;
+        self.opened_xlsx = None;
         let mut row_idx = 0;
 
         for result in reader.records() {
@@ -1661,6 +1723,9 @@ impl Spreadsheet {
 
         self.replace_sheets(sheets);
         self.source = Some(book);
+        // Autosave writes back to the file that was opened - recorded here,
+        // the one place that knows it was a real .xlsx on disk.
+        self.opened_xlsx = Some(std::path::PathBuf::from(filepath));
 
         Ok(())
     }
@@ -1755,6 +1820,7 @@ impl Spreadsheet {
         self.cells.clear();
         self.formulas.clear();
         self.source = None;
+        self.opened_xlsx = None;
         let mut row_idx = 0;
 
         // Process the buffered data line by line

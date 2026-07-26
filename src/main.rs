@@ -9,6 +9,7 @@ mod spreadsheet;
 mod style;
 mod types;
 mod ui;
+mod undo;
 mod update;
 mod xlsx;
 mod xlsx_style;

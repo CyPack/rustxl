@@ -46,6 +46,41 @@ impl Spreadsheet {
         (max_row, max_col)
     }
 
+    /// The debounce before an automatic save. Long enough to batch a burst
+    /// of typing into one write, short enough that "yazdiklarim hemen kayit
+    /// olsun" stays true - a crash can only ever cost this window.
+    const AUTOSAVE_AFTER: std::time::Duration = std::time::Duration::from_millis(800);
+
+    /// Write unsaved changes back to the opened .xlsx once they are due.
+    /// Called from the main loop's poll tick; a grid that was not opened
+    /// from an xlsx file never autosaves (the save dialog stays its exit).
+    pub fn autosave_if_due(&mut self) {
+        let Some(dirty_since) = self.dirty_since else {
+            return;
+        };
+        if dirty_since.elapsed() < Self::AUTOSAVE_AFTER || self.opened_xlsx.is_none() {
+            if self.opened_xlsx.is_none() {
+                self.dirty_since = None;
+            }
+            return;
+        }
+        // save_workbook writes to `save_filename + .xlsx`, which load_from_file
+        // pointed at the opened document - so this is "save in place".
+        match self.save_workbook() {
+            Ok(()) => {
+                self.dirty_since = None;
+                // The dialog's confirmation would be noise every 800ms.
+                self.save_message = None;
+            }
+            Err(error) => {
+                // A failing autosave must be LOUD - silence here is data loss.
+                self.save_message = Some(format!("Autosave failed: {error}"));
+                // Retry on the next tick rather than hammering every 100ms.
+                self.dirty_since = Some(std::time::Instant::now());
+            }
+        }
+    }
+
     pub fn save_to_file(&mut self) -> io::Result<()> {
         match self.save_format {
             SaveFormat::Csv | SaveFormat::Tsv => self.save_delimited(),
