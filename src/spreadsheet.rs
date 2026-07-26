@@ -1430,6 +1430,34 @@ impl Spreadsheet {
         for col in self.scroll_col..self.num_cols {
             let col_w = self.get_col_width(col) as i32;
             if used + col_w > available {
+                // The column that does not fully fit still gets drawn: the
+                // renderer clips it at the edge, exactly as Excel shows a
+                // partial column. Stopping before it left a dead unpainted
+                // strip as wide as whatever the next column happened to be —
+                // very visible after a file set its columns wide.
+                if used < available {
+                    count += 1;
+                }
+                break;
+            }
+            used += col_w;
+            count += 1;
+        }
+        count.max(1)
+    }
+
+    /// Columns that fit WITHOUT clipping. The renderer draws one more,
+    /// clipped at the edge, but the scroll logic must not count it: a cursor
+    /// "visible" only as a sliver would never trigger the scroll that brings
+    /// it fully on screen.
+    pub fn fully_visible_cols(&self, width: u16) -> usize {
+        let row_num_width = 5;
+        let available = width.saturating_sub(row_num_width) as i32;
+        let mut used = 0i32;
+        let mut count = 0;
+        for col in self.scroll_col..self.num_cols {
+            let col_w = self.get_col_width(col) as i32;
+            if used + col_w > available {
                 break;
             }
             used += col_w;
@@ -1447,7 +1475,7 @@ impl Spreadsheet {
     }
 
     pub fn adjust_scroll(&mut self, area: Rect) {
-        let visible_cols = self.visible_cols(area.width);
+        let visible_cols = self.fully_visible_cols(area.width);
         let visible_rows = self.visible_rows(area.height);
 
         if self.cursor_col < self.scroll_col {

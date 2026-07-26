@@ -56,8 +56,15 @@ fn format_cell_by_type(value: &str, data_type: DataType) -> String {
             }
         }
         DataType::Date => {
-            // For now, just return as-is. Could add date parsing/formatting later
-            value.to_string()
+            // The workbook stores a date as its serial day count; the format
+            // is the only thing that says "this is a date". The underlying
+            // cell text stays the serial, so the save path still sees an
+            // unchanged value and never rewrites the cell.
+            value
+                .parse::<f64>()
+                .ok()
+                .and_then(crate::xlsx_style::format_excel_date_serial)
+                .unwrap_or_else(|| value.to_string())
         }
         DataType::Time => {
             // For now, just return as-is. Could add time parsing/formatting later
@@ -545,9 +552,11 @@ fn render_grid(
                 if let Some(data_type) = cell_style.data_type {
                     match data_type {
                         DataType::Text => TextAlignment::Left,
-                        DataType::Number | DataType::Currency | DataType::Percentage => {
-                            TextAlignment::Right
-                        }
+                        // Dates sit with the numbers, as Excel draws them.
+                        DataType::Number
+                        | DataType::Currency
+                        | DataType::Percentage
+                        | DataType::Date => TextAlignment::Right,
                         _ => {
                             if is_number {
                                 TextAlignment::Right

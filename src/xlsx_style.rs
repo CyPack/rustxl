@@ -15,7 +15,7 @@ use ratatui::style::Color;
 use umya_spreadsheet::{PatternValues, Style};
 
 use crate::constants::{MAX_COL_WIDTH, MAX_ROW_HEIGHT, MIN_COL_WIDTH, MIN_ROW_HEIGHT};
-use crate::types::{CellStyle, TextAlignment, VerticalAlignment};
+use crate::types::{CellStyle, DataType, TextAlignment, VerticalAlignment};
 
 /// One Excel row of default height (15pt) is one terminal row.
 const POINTS_PER_TERMINAL_ROW: f64 = 15.0;
@@ -30,12 +30,14 @@ pub fn cell_style_from(style: &Style) -> Option<CellStyle> {
     let bold = font.is_some_and(|font| font.get_bold());
     let (alignment, vertical_alignment) = alignments_from(style);
     let (border_left, border_right, border_top, border_bottom) = borders_from(style);
+    let data_type = date_data_type(style);
 
     if bg.is_none()
         && fg.is_none()
         && !bold
         && alignment.is_none()
         && vertical_alignment.is_none()
+        && data_type.is_none()
         && !(border_left || border_right || border_top || border_bottom)
     {
         return None;
@@ -46,7 +48,7 @@ pub fn cell_style_from(style: &Style) -> Option<CellStyle> {
         bold,
         alignment,
         vertical_alignment,
-        data_type: None,
+        data_type,
         border_left,
         border_right,
         border_top,
@@ -119,6 +121,67 @@ fn alignments_from(style: &Style) -> (Option<TextAlignment>, Option<VerticalAlig
         _ => None,
     };
     (horizontal, vertical)
+}
+
+/// A number format that renders its value as a calendar date.
+///
+/// Without this a date column shows the raw Excel serial — `46223` where the
+/// planner wrote a work date — because a workbook stores dates as day counts
+/// and the FORMAT is the only thing that says so. Detection reads the format
+/// code: quoted literals and `[colour]` sections say nothing about the value,
+/// so they are stripped, and what remains is a date format when it spells
+/// year or day tokens. (`m` alone is ambiguous with minutes and `0.00` has
+/// no letters at all, so neither can trigger it.)
+fn date_data_type(style: &Style) -> Option<DataType> {
+    let code = style.get_numbering_format()?.get_format_code();
+    let mut cleaned = String::with_capacity(code.len());
+    let mut chars = code.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                for inner in chars.by_ref() {
+                    if inner == '"' {
+                        break;
+                    }
+                }
+            }
+            '[' => {
+                for inner in chars.by_ref() {
+                    if inner == ']' {
+                        break;
+                    }
+                }
+            }
+            '\\' => {
+                let _ = chars.next();
+            }
+            _ => cleaned.push(ch.to_ascii_lowercase()),
+        }
+    }
+    (cleaned.contains('y') || cleaned.contains('d')).then_some(DataType::Date)
+}
+
+/// One Excel date serial as `yyyy-mm-dd`, the format the reference files
+/// themselves use. Day 0 is 1899-12-30 in the 1900 system, which quietly
+/// absorbs Excel's fictional 1900-02-29 for every date after March 1900 —
+/// the only range these documents live in.
+pub fn format_excel_date_serial(serial: f64) -> Option<String> {
+    if !serial.is_finite() || !(1.0..=2_958_465.0).contains(&serial) {
+        return None;
+    }
+    // Whole days since 1970-01-01 (Excel serial 25569), then civil-from-days
+    // (Howard Hinnant's algorithm) — no date crate needed for y/m/d alone.
+    let days = (serial.trunc() as i64) - 25_569;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    Some(format!("{year:04}-{month:02}-{day:02}"))
 }
 
 /// Excel column width in character units, as terminal cells.
@@ -213,6 +276,51 @@ mod tests {
         assert!(cell.border_right);
         assert!(!cell.border_left);
         assert!(!cell.border_top);
+    }
+
+    #[test]
+    fn date_formats_are_detected_and_number_formats_are_not() {
+        let date = |code: &str| {
+            let mut style = Style::default();
+            style.get_numbering_format_mut().set_format_code(code);
+            date_data_type(&style)
+        };
+        assert_eq!(
+            date("yyyy\\-mm\\-dd"),
+            Some(DataType::Date),
+            "the reference file's own code"
+        );
+        assert_eq!(date("dd/mm/yyyy"), Some(DataType::Date));
+        assert_eq!(date("d-mmm-yy"), Some(DataType::Date));
+        assert_eq!(date("0.00"), None, "a plain number");
+        assert_eq!(date("General"), None);
+        assert_eq!(date("@"), None, "text format");
+        assert_eq!(date("h:mm"), None, "time alone stays a number for now");
+        assert_eq!(
+            date("\"day\" 0.0"),
+            None,
+            "a quoted literal must not smuggle a d into detection"
+        );
+        assert_eq!(date("[Red]0.00"), None, "colour sections say nothing");
+    }
+
+    #[test]
+    fn excel_date_serials_convert_to_civil_dates() {
+        assert_eq!(
+            format_excel_date_serial(25_569.0).as_deref(),
+            Some("1970-01-01")
+        );
+        assert_eq!(
+            format_excel_date_serial(45_658.0).as_deref(),
+            Some("2025-01-01")
+        );
+        assert_eq!(
+            format_excel_date_serial(46_223.0).as_deref(),
+            Some("2026-07-20"),
+            "the serial from the live screenshot"
+        );
+        assert_eq!(format_excel_date_serial(0.0), None, "out of range");
+        assert_eq!(format_excel_date_serial(f64::NAN), None);
     }
 
     #[test]
