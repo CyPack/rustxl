@@ -81,6 +81,24 @@ impl Spreadsheet {
         }
     }
 
+    /// Write any unsaved changes NOW, ignoring the debounce. The exit paths
+    /// call this so "close" can never race the 800ms window and lose the
+    /// last keystrokes.
+    pub fn flush_autosave(&mut self) {
+        if self.dirty_since.is_none() || self.opened_xlsx.is_none() {
+            return;
+        }
+        match self.save_workbook() {
+            Ok(()) => {
+                self.dirty_since = None;
+                self.save_message = None;
+            }
+            Err(error) => {
+                self.save_message = Some(format!("Autosave failed: {error}"));
+            }
+        }
+    }
+
     pub fn save_to_file(&mut self) -> io::Result<()> {
         match self.save_format {
             SaveFormat::Csv | SaveFormat::Tsv => self.save_delimited(),

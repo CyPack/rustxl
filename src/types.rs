@@ -44,6 +44,9 @@ pub struct CellStyle {
     pub border_right: bool,
     pub border_top: bool,
     pub border_bottom: bool,
+    /// A user-chosen colour for this cell's gridlines, independent of the
+    /// text colour: a red annotation must not drag the box around it red.
+    pub border_color: Option<Color>,
 }
 
 #[derive(Clone, Copy, PartialEq)]

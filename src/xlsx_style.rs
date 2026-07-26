@@ -53,6 +53,9 @@ pub fn cell_style_from(style: &Style) -> Option<CellStyle> {
         border_right,
         border_top,
         border_bottom,
+        // The file's border COLOURS collapse onto the default strong line;
+        // this channel belongs to the user's own line-colouring tool.
+        border_color: None,
     })
 }
 

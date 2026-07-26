@@ -269,6 +269,14 @@ fn render_toolbar(f: &mut Frame, spreadsheet: &mut Spreadsheet, area: Rect) {
         true,
         palette == Some(PaletteTarget::Fill),
     );
+    draw(
+        f,
+        &mut x,
+        "▤ Çizgi",
+        Some(ToolbarAction::BorderColor),
+        true,
+        palette == Some(PaletteTarget::Border),
+    );
 
     // Save state, right-aligned: the answer to "kaydoldu mu?" without a key.
     let save_label = if spreadsheet.opened_xlsx.is_none() {

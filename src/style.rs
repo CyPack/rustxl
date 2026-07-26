@@ -50,6 +50,8 @@ impl Spreadsheet {
             && style.alignment.is_none()
             && style.vertical_alignment.is_none()
             && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
         {
             self.cell_styles.remove(&(row, col));
         } else {
@@ -66,6 +68,29 @@ impl Spreadsheet {
             && style.alignment.is_none()
             && style.vertical_alignment.is_none()
             && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
+        {
+            self.cell_styles.remove(&(row, col));
+        } else {
+            self.cell_styles.insert((row, col), style);
+        }
+    }
+
+    /// The gridline colour for one cell — deliberately its OWN channel, not
+    /// the text colour: a spreadsheet's box lines and its ink are different
+    /// tools, and colouring text must never repaint the box.
+    pub fn set_cell_border_color(&mut self, row: usize, col: usize, color: Option<Color>) {
+        let mut style = self.get_cell_style(row, col);
+        style.border_color = color;
+        if style.fg.is_none()
+            && style.bg.is_none()
+            && !style.bold
+            && style.alignment.is_none()
+            && style.vertical_alignment.is_none()
+            && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
         {
             self.cell_styles.remove(&(row, col));
         } else {
@@ -82,6 +107,8 @@ impl Spreadsheet {
             && style.alignment.is_none()
             && style.vertical_alignment.is_none()
             && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
         {
             self.cell_styles.remove(&(row, col));
         } else {
@@ -98,6 +125,8 @@ impl Spreadsheet {
             && style.alignment.is_none()
             && style.vertical_alignment.is_none()
             && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
         {
             self.cell_styles.remove(&(row, col));
         } else {
@@ -119,6 +148,8 @@ impl Spreadsheet {
             && style.alignment.is_none()
             && style.vertical_alignment.is_none()
             && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
         {
             self.cell_styles.remove(&(row, col));
         } else {
@@ -135,6 +166,8 @@ impl Spreadsheet {
             && style.alignment.is_none()
             && style.vertical_alignment.is_none()
             && style.data_type.is_none()
+            && style.border_color.is_none()
+            && !(style.border_left || style.border_right || style.border_top || style.border_bottom)
         {
             self.cell_styles.remove(&(row, col));
         } else {

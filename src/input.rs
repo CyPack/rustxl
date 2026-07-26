@@ -810,7 +810,24 @@ fn handle_ready_mode(
             spreadsheet.start_editing();
             spreadsheet.handle_char_input(c);
         }
-        KeyCode::Esc => spreadsheet.clear_selection(),
+        KeyCode::Esc => {
+            // Esc steps OUT, one layer at a time: an open palette or a live
+            // selection is dismissed first; a second Esc on a calm grid
+            // saves whatever is unsaved and leaves - which is what closes
+            // the popup this grid runs in over the file manager.
+            let something_was_open = spreadsheet.toolbar_palette.is_some()
+                || spreadsheet.selection_anchor.is_some()
+                || spreadsheet.selected_rows.is_some()
+                || spreadsheet.selected_cols.is_some();
+            if something_was_open {
+                spreadsheet.toolbar_palette = None;
+                spreadsheet.clear_selection();
+                spreadsheet.exit_row_column_select_mode();
+            } else {
+                spreadsheet.flush_autosave();
+                return true;
+            }
+        }
         _ => {}
     }
     false
@@ -1121,6 +1138,28 @@ mod sheet_navigation_keys {
 
         assert_eq!(sheet.active_sheet_name(), "Alpha");
         assert!(sheet.editing, "a letter begins a cell edit");
+    }
+
+    /// Esc steps out one layer at a time: first it dismisses a selection or
+    /// an open palette, and only a second Esc on a calm grid quits - saving
+    /// first, which is what closes the popup the grid runs in.
+    #[test]
+    fn esc_clears_first_and_quits_second() {
+        let mut sheet = workbook();
+        sheet.select_cell(0, 0);
+        sheet.extend_selection_to(1, 1);
+
+        assert!(!handle_ready_mode(
+            &mut sheet,
+            KeyCode::Esc,
+            KeyModifiers::empty()
+        ));
+        assert!(sheet.get_selection_range().is_none(), "first esc clears");
+
+        assert!(
+            handle_ready_mode(&mut sheet, KeyCode::Esc, KeyModifiers::empty()),
+            "second esc asks to quit"
+        );
     }
 
     /// Tab walks the sheets and Shift+Tab walks them back; Visual mode moved
