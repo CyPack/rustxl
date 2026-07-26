@@ -489,7 +489,7 @@ impl Spreadsheet {
 
     pub fn execute_command(&mut self) -> bool {
         let cmd = self.command_buffer.trim().to_uppercase();
-        
+
         // Check if it's a quit command
         if cmd == "Q" || cmd == "QUIT" {
             return true; // Signal to quit
@@ -527,13 +527,13 @@ impl Spreadsheet {
 
     pub fn update_find_matches(&mut self) {
         self.find_matches.clear();
-        
+
         if self.find_query.is_empty() {
             return;
         }
 
         let query_lower = self.find_query.to_lowercase();
-        
+
         // Search through all cells
         for row in 0..self.num_rows {
             for col in 0..self.num_cols {
@@ -567,16 +567,22 @@ impl Spreadsheet {
 
     fn copy_or_cut_selection(&mut self, is_cut: bool) {
         // Determine the range to copy
-        let (min_row, min_col, max_row, max_col) = if let Some(((r1, c1), (r2, c2))) = self.get_selection_range() {
-            (r1, c1, r2, c2)
-        } else if let Some((min_row, max_row)) = self.selected_rows {
-            (min_row, 0, max_row, self.num_cols - 1)
-        } else if let Some((min_col, max_col)) = self.selected_cols {
-            (0, min_col, self.num_rows - 1, max_col)
-        } else {
-            // Single cell
-            (self.cursor_row, self.cursor_col, self.cursor_row, self.cursor_col)
-        };
+        let (min_row, min_col, max_row, max_col) =
+            if let Some(((r1, c1), (r2, c2))) = self.get_selection_range() {
+                (r1, c1, r2, c2)
+            } else if let Some((min_row, max_row)) = self.selected_rows {
+                (min_row, 0, max_row, self.num_cols - 1)
+            } else if let Some((min_col, max_col)) = self.selected_cols {
+                (0, min_col, self.num_rows - 1, max_col)
+            } else {
+                // Single cell
+                (
+                    self.cursor_row,
+                    self.cursor_col,
+                    self.cursor_row,
+                    self.cursor_col,
+                )
+            };
 
         // Collect cell data with relative positions
         let mut cells_data = Vec::new();
@@ -586,7 +592,7 @@ impl Spreadsheet {
                 let rel_col = col - min_col;
                 let value = self.get_cell(row, col).to_string();
                 let style = self.cell_styles.get(&(row, col)).copied();
-                
+
                 // Only include non-empty cells or cells with styles
                 if !value.is_empty() || style.is_some() {
                     cells_data.push(((rel_row, rel_col), value, style));
@@ -616,7 +622,11 @@ impl Spreadsheet {
         self.clipboard_data = Some(ClipboardData {
             cells: cells_data,
             is_cut,
-            cut_origin: if is_cut { Some((min_row, min_col)) } else { None },
+            cut_origin: if is_cut {
+                Some((min_row, min_col))
+            } else {
+                None
+            },
         });
     }
 
@@ -692,7 +702,7 @@ impl Spreadsheet {
 
         for (row_offset, line) in text.lines().enumerate() {
             let new_row = dest_row + row_offset;
-            
+
             // Expand rows if needed
             if new_row >= self.num_rows {
                 self.num_rows = new_row + 1;
@@ -700,10 +710,10 @@ impl Spreadsheet {
 
             // Split by tabs (Excel/spreadsheet format)
             let values: Vec<&str> = line.split('\t').collect();
-            
+
             for (col_offset, value) in values.iter().enumerate() {
                 let new_col = dest_col + col_offset;
-                
+
                 // Expand columns if needed
                 if new_col >= self.num_cols {
                     self.num_cols = new_col + 1;
@@ -879,21 +889,22 @@ impl Spreadsheet {
     /// Returns None if no multi-cell selection exists
     pub fn get_selection_stats(&mut self) -> Option<(usize, usize, usize, f64)> {
         // Get the effective selection range - could be from selection_anchor, selected_rows, or selected_cols
-        let range = if let Some(((min_row, min_col), (max_row, max_col))) = self.get_selection_range() {
-            // Regular cell selection
-            if min_row == max_row && min_col == max_col {
-                return None; // Single cell, no stats
-            }
-            Some((min_row, min_col, max_row, max_col))
-        } else if let Some((min_row, max_row)) = self.selected_rows {
-            // Row selection - use all columns with data
-            Some((min_row, 0, max_row, self.num_cols - 1))
-        } else if let Some((min_col, max_col)) = self.selected_cols {
-            // Column selection - use all rows with data
-            Some((0, min_col, self.num_rows - 1, max_col))
-        } else {
-            None
-        };
+        let range =
+            if let Some(((min_row, min_col), (max_row, max_col))) = self.get_selection_range() {
+                // Regular cell selection
+                if min_row == max_row && min_col == max_col {
+                    return None; // Single cell, no stats
+                }
+                Some((min_row, min_col, max_row, max_col))
+            } else if let Some((min_row, max_row)) = self.selected_rows {
+                // Row selection - use all columns with data
+                Some((min_row, 0, max_row, self.num_cols - 1))
+            } else if let Some((min_col, max_col)) = self.selected_cols {
+                // Column selection - use all rows with data
+                Some((0, min_col, self.num_rows - 1, max_col))
+            } else {
+                None
+            };
 
         let (min_row, min_col, max_row, max_col) = range?;
 
@@ -1079,15 +1090,15 @@ impl Spreadsheet {
 
         let prefix_upper = self.formula_prefix.to_uppercase();
         let all_formulas = Self::get_available_formulas();
-        
+
         let mut suggestions: Vec<String> = all_formulas
             .into_iter()
             .filter(|f| f.starts_with(&prefix_upper))
             .collect();
-        
+
         // Sort alphabetically for better UX
         suggestions.sort();
-        
+
         self.formula_suggestions = suggestions;
         self.formula_autocomplete_active = !self.formula_suggestions.is_empty();
         if self.formula_suggestion_index >= self.formula_suggestions.len() {
@@ -1185,7 +1196,8 @@ impl Spreadsheet {
 
         let end_pos = self.ref_insert_pos + self.ref_current_len;
         if end_pos <= self.edit_buffer.len() {
-            self.edit_buffer.replace_range(self.ref_insert_pos..end_pos, &ref_text);
+            self.edit_buffer
+                .replace_range(self.ref_insert_pos..end_pos, &ref_text);
         } else {
             self.edit_buffer.push_str(&ref_text);
         }
@@ -1563,12 +1575,48 @@ impl Spreadsheet {
                 if !value.is_empty() {
                     sheet.cells.insert((row, col), value.into_owned());
                 }
+
+                // Styled-but-empty cells matter here: in a Hasrapport the
+                // colour blocks with no text ARE the content. `cells_sorted`
+                // yields them, so the style lands even when the value did not.
+                if let Some(style) = crate::xlsx_style::cell_style_from(cell.get_style()) {
+                    sheet.cell_styles.insert((row, col), style);
+                }
             }
 
-            // Size each sheet to its own contents.
+            for column in worksheet.get_column_dimensions() {
+                let Some(col) = (column.get_col_num() as usize).checked_sub(1) else {
+                    continue;
+                };
+                // A dimension entry can exist only to carry a style; a zero
+                // width there means "not set", and mapping it would shrink
+                // the column to the minimum instead of leaving it alone.
+                let width = column.get_width();
+                if width > 0.0 {
+                    sheet
+                        .col_widths
+                        .insert(col, crate::xlsx_style::col_width_cells(width));
+                }
+            }
+            for row_dim in worksheet.get_row_dimensions() {
+                let Some(row) = (row_dim.get_row_num() as usize).checked_sub(1) else {
+                    continue;
+                };
+                let height = crate::xlsx_style::row_height_cells(row_dim.get_height());
+                // The default height is not worth a map entry, and files write
+                // a dimension row for every row they touch.
+                if height > 1 {
+                    sheet.row_heights.insert(row, height);
+                }
+            }
+
+            // Size each sheet to its contents — including cells that carry
+            // only a colour, or the painted area of the form would be cut off
+            // at its last written word.
             let (max_row, max_col) = sheet
                 .cells
                 .keys()
+                .chain(sheet.cell_styles.keys())
                 .fold((0, 0), |(r, c), &(row, col)| (r.max(row), c.max(col)));
             sheet.num_rows = (max_row + 1).max(DEFAULT_ROWS);
             sheet.num_cols = (max_col + 1).max(DEFAULT_COLS);
@@ -1595,10 +1643,10 @@ impl Spreadsheet {
     /// formulas behind them, so a file opened this way cannot be written back
     /// as a workbook without losing them.
     fn load_legacy_excel(&mut self, filepath: &str) -> std::io::Result<()> {
-        use calamine::{open_workbook_auto, Reader, Data};
+        use calamine::{Data, Reader, open_workbook_auto};
 
         let path = std::path::Path::new(filepath);
-        
+
         // Open workbook - calamine can auto-detect the format
         let mut workbook = open_workbook_auto(path)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
@@ -1675,7 +1723,7 @@ impl Spreadsheet {
     pub fn load_from_buffer(&mut self, buffer: &[u8]) -> std::io::Result<()> {
         // Convert to string for processing
         let buffer_str = String::from_utf8_lossy(buffer);
-        
+
         self.cells.clear();
         self.formulas.clear();
         self.source = None;
@@ -1684,30 +1732,30 @@ impl Spreadsheet {
         // Process the buffered data line by line
         for line in buffer_str.lines() {
             let trimmed = line.trim();
-            
+
             // Skip empty lines
             if trimmed.is_empty() {
                 continue;
             }
-            
+
             // Split by whitespace (handles multiple spaces/tabs)
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
-            
+
             for (col_idx, part) in parts.iter().enumerate() {
                 if !part.is_empty() {
                     self.set_cell(row_idx, col_idx, part.to_string());
                 }
             }
-            
+
             row_idx += 1;
         }
-        
+
         // Update dimensions based on loaded data
         let (max_row, max_col) = self.get_data_bounds();
         self.num_rows = (max_row + 1).max(DEFAULT_ROWS);
         self.num_cols = (max_col + 1).max(DEFAULT_COLS);
         self.adopt_grid_as_only_sheet(crate::sheet::DEFAULT_SHEET_NAME);
-        
+
         Ok(())
     }
 }
@@ -1776,9 +1824,9 @@ mod tests {
     fn test_load_from_buffer_simple() {
         let mut sheet = Spreadsheet::new();
         let data = b"hello world\nfoo bar baz";
-        
+
         sheet.load_from_buffer(data).unwrap();
-        
+
         assert_eq!(sheet.get_cell(0, 0), "hello");
         assert_eq!(sheet.get_cell(0, 1), "world");
         assert_eq!(sheet.get_cell(1, 0), "foo");
@@ -1791,9 +1839,9 @@ mod tests {
         let mut sheet = Spreadsheet::new();
         // Multiple spaces and tabs between fields
         let data = b"col1    col2\tcol3\n  value1   value2  ";
-        
+
         sheet.load_from_buffer(data).unwrap();
-        
+
         assert_eq!(sheet.get_cell(0, 0), "col1");
         assert_eq!(sheet.get_cell(0, 1), "col2");
         assert_eq!(sheet.get_cell(0, 2), "col3");
@@ -1805,9 +1853,9 @@ mod tests {
     fn test_load_from_buffer_skips_empty_lines() {
         let mut sheet = Spreadsheet::new();
         let data = b"line1\n\n\nline2\n   \nline3";
-        
+
         sheet.load_from_buffer(data).unwrap();
-        
+
         assert_eq!(sheet.get_cell(0, 0), "line1");
         assert_eq!(sheet.get_cell(1, 0), "line2");
         assert_eq!(sheet.get_cell(2, 0), "line3");
@@ -1820,19 +1868,19 @@ mod tests {
         let data = b"total 120
 drwxr-xr-x  3 user group  96 Jan 23 14:20 .git
 -rw-r--r--  1 user group 500 Jan 23 14:20 Cargo.toml";
-        
+
         sheet.load_from_buffer(data).unwrap();
-        
+
         // First line: "total 120"
         assert_eq!(sheet.get_cell(0, 0), "total");
         assert_eq!(sheet.get_cell(0, 1), "120");
-        
+
         // Second line: directory entry
         assert_eq!(sheet.get_cell(1, 0), "drwxr-xr-x");
         assert_eq!(sheet.get_cell(1, 1), "3");
         assert_eq!(sheet.get_cell(1, 2), "user");
-        
-        // Third line: file entry  
+
+        // Third line: file entry
         assert_eq!(sheet.get_cell(2, 0), "-rw-r--r--");
     }
 
@@ -1840,9 +1888,9 @@ drwxr-xr-x  3 user group  96 Jan 23 14:20 .git
     fn test_load_from_buffer_empty() {
         let mut sheet = Spreadsheet::new();
         let data = b"";
-        
+
         sheet.load_from_buffer(data).unwrap();
-        
+
         // Should have default dimensions but no data
         assert!(sheet.num_rows >= DEFAULT_ROWS);
         assert!(sheet.num_cols >= DEFAULT_COLS);
@@ -1853,9 +1901,9 @@ drwxr-xr-x  3 user group  96 Jan 23 14:20 .git
     fn test_load_from_buffer_unicode() {
         let mut sheet = Spreadsheet::new();
         let data = "héllo wörld\n日本語 テスト".as_bytes();
-        
+
         sheet.load_from_buffer(data).unwrap();
-        
+
         assert_eq!(sheet.get_cell(0, 0), "héllo");
         assert_eq!(sheet.get_cell(0, 1), "wörld");
         assert_eq!(sheet.get_cell(1, 0), "日本語");
@@ -1899,8 +1947,8 @@ mod workbook_loading_characterization {
                 sheet.park_active_sheet();
                 sheet.sheets.iter()
             }
-                .map(|s| s.name.as_str())
-                .collect::<Vec<_>>(),
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
             vec!["Alpha", "Beta", "Gamma"],
             "sheets keep their workbook order and names"
         );
@@ -2011,10 +2059,7 @@ mod workbook_loading_characterization {
             .expect("fixture loads");
         assert_eq!(sheet.sheet_count(), 3, "workbook is open");
 
-        let csv = std::env::temp_dir().join(format!(
-            "xl-single-sheet-{}.csv",
-            std::process::id()
-        ));
+        let csv = std::env::temp_dir().join(format!("xl-single-sheet-{}.csv", std::process::id()));
         std::fs::write(&csv, "a,b\n1,2\n").expect("temp csv is writable");
         sheet
             .load_from_file(&csv.to_string_lossy())

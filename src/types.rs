@@ -1,6 +1,6 @@
 use ratatui::style::Color;
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum TextAlignment {
     #[default]
     Left,
@@ -8,7 +8,7 @@ pub enum TextAlignment {
     Right,
 }
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum VerticalAlignment {
     #[default]
     Top,
@@ -16,7 +16,7 @@ pub enum VerticalAlignment {
     Bottom,
 }
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum DataType {
     #[default]
     Text,
